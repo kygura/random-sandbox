@@ -392,3 +392,117 @@ body.modal-open { overflow: hidden; }
   .mtext { overflow: visible; padding: 18px max(18px, env(safe-area-inset-left, 0px)) 40px; }
   .level[data-level="1"] { --mh: 96px; } .level[data-level="2"] { --mh: 84px; } .level[data-level="3"] { --mh: 76px; }
 }
+
+/* ===================== Phones ===================== */
+.lvnav { display: none; }
+.btn.more { margin: 14px 0 0 calc(3rem + 14px); }
+
+/* Touch screens: no hover effects that stick after a tap. */
+@media (hover: none) {
+  .lvm:hover img { transform: none; }
+  .entry:hover:not(.open) { color: var(--lvink); }
+  .entry:not(.debated):not(.speculative):hover .et { text-decoration: none; }
+  .entry.debated:hover:not(.open) .et { text-decoration-color: var(--muted); }
+  .entry.speculative:hover:not(.open) .et { text-decoration-color: var(--bad); }
+}
+
+@media (max-width: 760px) {
+  /* Header: title and theme switch on one line, then a two-up row under the topic. */
+  .console { padding-block: 14px 6px; gap: 12px; }
+  .brand { flex-wrap: nowrap; align-items: center; }
+  .brand b { font-size: 19px; white-space: nowrap; }
+  .themes button { padding: 8px 10px; font-size: 12.5px; min-height: 34px; }
+  form.dive { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .field { grid-column: 1 / -1; }
+  #topic { height: 56px; font-size: 16px; }
+  .tier select { width: 100%; height: 52px; font-size: 16px; }
+  .btn-dive, .btn-stop { width: 100%; height: 52px; }
+  .access input { font-size: 16px; height: 44px; width: 100%; }
+  .access { gap: 6px; }
+
+  /* Saved icebergs scroll sideways instead of stacking up. */
+  .recent { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * max(20px, env(safe-area-inset-left, 0px))); padding-inline: max(20px, env(safe-area-inset-left, 0px)); }
+  .recent::-webkit-scrollbar { display: none; }
+  .recent small { flex: none; }
+  .chip { flex: none; min-height: 36px; padding: 6px 14px; white-space: nowrap; }
+
+  .hero { padding-block: 24px 24px; gap: 10px; }
+  .hero h1 { font-size: clamp(40px, 12vw, 56px); }
+  .hero p { font-size: 18px; }
+  .readouts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 16px; }
+
+  .chart-head { padding-block: 12px; }
+  .legend { gap: 6px 14px; font-size: 12.5px; }
+
+  /* Sticky jump bar for the six levels. */
+  .lvnav {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+    padding: 8px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
+    background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px);
+    border-block: 1px solid var(--line);
+  }
+  .lvnav::-webkit-scrollbar { display: none; }
+  .lvnav button {
+    flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px;
+    border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface); cursor: pointer;
+    font-family: var(--f-ui); font-size: 13px; color: var(--ink-2); white-space: nowrap;
+  }
+  .lvnav .n { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+  .lvnav .c { font-family: var(--f-mono); font-size: 10.5px; color: var(--muted); }
+  .lvnav button[aria-current="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .lvnav button[aria-current="true"] .n, .lvnav button[aria-current="true"] .c { color: var(--bg); opacity: 0.7; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 21; background: var(--bg); }
+  .level { scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 56px); }
+
+  /* Levels: each entry its own comfortable row. */
+  .level-in { padding-left: max(22px, calc(env(safe-area-inset-left, 0px) + 22px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); gap: 14px; }
+  .level { --lvpad: 24px; }
+  .entries { flex-direction: column; align-items: stretch; gap: 2px; }
+  .entry { min-height: 44px; padding: 4px 0; width: 100%; }
+  .level[data-level="1"] .entry { min-height: 60px; }
+  .level[data-level="1"] { --lvsize: clamp(26px, 7.4vw, 32px); --th: 48px; }
+  .level[data-level="2"] { --lvsize: 22px; --th: 40px; }
+  .level[data-level="3"] { --lvsize: 19px; --th: 36px; }
+  .level[data-level="4"] { --lvsize: 18px; --th: 34px; }
+  .level[data-level="5"] { --lvsize: 17px; --th: 32px; }
+  .level[data-level="6"] { --lvsize: 16px; --th: 32px; }
+  .skel { width: 70% !important; }
+  .skel:nth-child(2n) { width: 50% !important; }
+
+  /* Media strips run to the screen edge so it's clear they scroll. */
+  .lvmedia {
+    margin-left: calc(-1 * max(22px, calc(env(safe-area-inset-left, 0px) + 22px)));
+    margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+    padding-left: max(22px, calc(env(safe-area-inset-left, 0px) + 22px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    scroll-padding-left: max(22px, calc(env(safe-area-inset-left, 0px) + 22px));
+    scrollbar-width: none;
+  }
+  .lvmedia::-webkit-scrollbar { display: none; }
+  .level[data-level="1"] { --mh: 112px; } .level[data-level="2"] { --mh: 96px; } .level[data-level="3"] { --mh: 88px; }
+  .level[data-level="4"], .level[data-level="5"], .level[data-level="6"] { --mh: 80px; }
+
+  /* Sources and footer. */
+  .appendix { padding-block: 40px 56px; }
+  .appendix h2 { font-size: 32px; }
+  ol.sources li { gap: 10px; padding: 14px 4px; }
+  .stitle { display: inline-block; padding-block: 2px; }
+  .btn.more { margin-left: 0; width: 100%; min-height: 44px; }
+  .how { margin-top: 36px; }
+
+  /* Entry modal: bigger controls, actions easy to reach. */
+  .dhead { padding: 10px max(14px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); position: sticky; top: 0; background: var(--surface); z-index: 2; }
+  .xbtn { width: 44px; height: 44px; font-size: 22px; }
+  .dbody h2 { font-size: 30px; }
+  .dbody .lead { font-size: 18px; }
+  .actions .btn { min-height: 44px; flex: 1 1 auto; }
+  .strip button { width: 88px; height: 58px; }
+  .citelist a { padding: 10px; }
+  .lightbox .xbtn { width: 44px; height: 44px; font-size: 22px; }
+}
+
+@media (max-width: 380px) {
+  .themes button { padding: 8px 8px; font-size: 12px; }
+  .brand b { font-size: 17px; }
+}

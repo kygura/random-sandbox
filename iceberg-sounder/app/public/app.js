@@ -144,7 +144,7 @@ function renderHero() {
     h("div", { class: "readouts" },
       h("span", {}, h("b", { text: String(entries) }), " entries"),
       h("span", {}, h("b", { text: String(ice.sources.length) }), " sources"),
-      h("span", {}, h("b", { text: String(media) }), " entries with images or video"),
+      h("span", {}, h("b", { text: String(media) }), " with images or video"),
       h("span", {}, h("b", { text: `${done}/6` }), " levels charted")));
 }
 
@@ -227,8 +227,32 @@ function levelMedia(i) {
       return b;
     }));
 }
-function renderBand(i) { const old = document.getElementById("lv-" + ZONES[i].key); const el = levelEl(i); if (old) old.replaceWith(el); else $("#levels").append(el); }
-function renderOcean() { $("#levels").replaceChildren(...ZONES.map((_, i) => levelEl(i))); }
+function renderBand(i) { const old = document.getElementById("lv-" + ZONES[i].key); const el = levelEl(i); if (old) old.replaceWith(el); else $("#levels").append(el); renderLvNav(); }
+function renderOcean() { $("#levels").replaceChildren(...ZONES.map((_, i) => levelEl(i))); renderLvNav(); }
+
+/* Phones: a sticky bar of the six levels, marking the one on screen. */
+function renderLvNav() {
+  const ice = state.ice;
+  $("#lvnav").replaceChildren(...ZONES.map((z, i) => h("button", {
+    type: "button", "data-key": z.key, "aria-label": `Level ${z.level}: ${z.name}`,
+    onclick: () => document.getElementById("lv-" + z.key)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+  }, h("span", { class: "n", text: String(z.level) }), h("span", { class: "t", text: z.name }),
+     ice.layers[i].entries.length ? h("span", { class: "c", text: String(ice.layers[i].entries.length) }) : null)));
+  markLvNav();
+}
+let navTick = 0;
+function markLvNav() {
+  const nav = $("#lvnav"); if (!nav.offsetParent) return;
+  const line = nav.getBoundingClientRect().bottom + 8;
+  let current = null;
+  for (const z of ZONES) { const el = document.getElementById("lv-" + z.key); if (el && el.getBoundingClientRect().top <= line) current = z.key; }
+  nav.querySelectorAll("button").forEach((b) => {
+    const on = b.dataset.key === current;
+    if (on && b.getAttribute("aria-current") !== "true") b.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+    b.toggleAttribute("aria-current", false); if (on) b.setAttribute("aria-current", "true");
+  });
+}
+window.addEventListener("scroll", () => { if (!navTick) navTick = requestAnimationFrame(() => { navTick = 0; markLvNav(); }); }, { passive: true });
 
 /* --- Media --- */
 function playerEl(s, { compact = false } = {}) {
@@ -254,13 +278,18 @@ function citedIn(ice) {
   })));
   return map;
 }
+const SOURCES_SHOWN = 6;
 function renderSources() {
   const ice = state.ice; const cited = citedIn(ice);
-  $("#sources").replaceChildren(...ice.sources.map((s) => {
+  const all = state.allSources || ice.sources.length <= SOURCES_SHOWN + 2;
+  const more = $("#srcMore");
+  more.hidden = all;
+  more.textContent = `Show all ${ice.sources.length} sources`;
+  $("#sources").replaceChildren(...ice.sources.map((s, n) => {
     const th = h("span", { class: "sthumb" });
     const pic = img(thumbOf(s), { alt: "", onfail: (el) => { const f = img(s.favicon, { cls: "favicon" }); f ? el.replaceWith(f) : el.remove(); } }) || img(s.favicon, { cls: "favicon" });
     if (pic) th.append(pic);
-    return h("li", { id: "src-" + s.id },
+    return h("li", { id: "src-" + s.id, hidden: (!all && n >= SOURCES_SHOWN) || null },
       h("span", { class: "sid", text: `[${s.id}]` }), th,
       h("div", {},
         h("a", { class: "stitle", href: s.url, target: "_blank", rel: "noopener noreferrer", text: s.title || s.url }),
@@ -285,7 +314,7 @@ function renderRecent() {
     ...hist.map((x) => h("button", { class: "chip" + (state.ice.id === x.id ? " on" : ""), type: "button", disabled: state.busy || null, onclick: () => show(x), text: x.title || x.topic })));
 }
 function renderAll() { renderHero(); renderOcean(); renderSeabed(); renderRecent(); }
-function show(ice) { if (state.busy) return; state.ice = ice; closeDrawer(); renderAll(); window.scrollTo({ top: 0 }); }
+function show(ice) { if (state.busy) return; state.ice = ice; state.allSources = false; closeDrawer(); renderAll(); window.scrollTo({ top: 0 }); }
 
 /* ===== Status ===== */
 const prog = { done: 0, total: 1 };
@@ -298,6 +327,7 @@ function setProgress() { $("#barFill").style.width = Math.round((prog.done / pro
 function setBusy(b) {
   state.busy = b;
   $("#diveBtn").disabled = b || !canDive();
+  $("#diveBtn").hidden = b;
   $("#stopBtn").hidden = !b;
   $("#bar").hidden = !b;
   if (b) { prog.done = 0; setProgress(); }
@@ -567,13 +597,15 @@ document.addEventListener("click", (ev) => {
   const a = ev.target.closest("a.cite");
   if (!a) return;
   ev.preventDefault();
-  const el = document.getElementById("src-" + a.dataset.cite);
+  let el = document.getElementById("src-" + a.dataset.cite);
+  if (el?.hidden) { state.allSources = true; renderSources(); el = document.getElementById("src-" + a.dataset.cite); }
   if (!el) return;
   closeDrawer();
   el.scrollIntoView({ behavior: "smooth", block: "center" });
   el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1800);
 });
 
+$("#srcMore").addEventListener("click", () => { state.allSources = true; renderSources(); });
 $("#accessCode").addEventListener("input", (ev) => { try { localStorage.setItem(AKEY, ev.target.value.trim()); } catch {} });
 
 /* ===== Boot ===== */
