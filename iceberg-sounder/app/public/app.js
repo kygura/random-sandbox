@@ -137,8 +137,7 @@ function renderHero() {
   const media = ice.layers.reduce((n, l) => n + l.entries.filter((e) => mediaOf(ice, e).length).length, 0);
   $("#hero").replaceChildren(
     h("div", { class: "eyebrow" },
-      h("span", { text: ice.example ? "Charted example" : "Iceberg" }),
-      ice.example ? h("span", { class: "tagx", text: "Example · pre-built from real sources" }) : null,
+      h("span", { text: ice.example ? "Example" : "Iceberg" }),
       ice.createdAt ? h("span", { text: new Date(ice.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) }) : null),
     h("h1", { text: ice.title || ice.topic }),
     ice.summary ? h("p", { text: ice.summary }) : h("p", { text: "Planning the search…" }),
@@ -188,7 +187,7 @@ function levelEl(i) {
   } else if (layer.status === "error") {
     inner = [h("span", { class: "note bad", text: layer.error || "This level couldn't be charted." })];
   } else {
-    inner = [h("span", { class: "note", text: "Nothing reliable surfaced at this level." })];
+    inner = [h("span", { class: "note", text: "No results at this level." })];
   }
   const busy = layer.status === "searching" || layer.status === "charting";
   const cited = new Set(layer.entries.flatMap((e) => e.sources)).size;
@@ -338,7 +337,7 @@ async function build(topic) {
         setProgress(); renderBand(ev.index); renderHero();
       } else if (ev.type === "done") {
         finished = true;
-        setStatus(ev.charted ? `Charted ${ev.charted} of 6 levels from ${ev.sources} sources. Open any entry to see where it came from.` : "No level could be charted. Try a more specific topic.", ev.charted ? null : "err");
+        setStatus(ev.charted ? `Charted ${ev.charted} of 6 levels from ${ev.sources} sources.` : "No level could be charted. Try a more specific topic.", ev.charted ? null : "err");
       } else if (ev.type === "error") {
         finished = true;
         setStatus(ev.error?.message || "The dive failed.", "err");
@@ -346,7 +345,7 @@ async function build(topic) {
     }
     if (!finished && !ctl.signal.aborted) setStatus("The connection to the server dropped before the dive finished.", "err");
   } catch (e) {
-    if (ctl.signal.aborted || e?.name === "AbortError") setStatus("Dive stopped. Charted layers are kept.");
+    if (ctl.signal.aborted || e?.name === "AbortError") setStatus("Stopped. Finished levels are kept.");
     else setStatus(e?.message || "Couldn't reach the server. Is it still running?", "err");
   } finally {
     ice.layers.forEach((l, i) => { if (["pending", "searching", "charting"].includes(l.status)) { l.status = "error"; l.error = "Stopped before this level was reached."; renderBand(i); } });
@@ -474,7 +473,7 @@ function openEntry(li, ei, mediaId) {
     h("p", { class: "lead", text: e.summary }),
     e.detail ? h("p", { class: "detail", text: e.detail }) : null,
     h("div", { class: "actions" }, digBtn, stopBtn, newBtn),
-    !canDive() ? h("div", { class: "err", text: "Dig deeper and new dives need the server's Anthropic and Exa keys. See the README." }) : null,
+    !canDive() ? h("div", { class: "err", text: "Dig deeper needs the server's Anthropic and Exa keys." }) : null,
     deepErr, deepBox, holesBox,
     h("div", { class: "dsec" }, h("h3", { text: `Sources · ${srcs.length}` }),
       h("ul", { class: "citelist" }, srcs.map((s) => {
@@ -493,7 +492,7 @@ function openEntry(li, ei, mediaId) {
   enrichEntry(ice, e, li, ei, mediaBox);
 }
 function renderHoles(box, holes) {
-  box.replaceChildren(...((holes || []).length ? [h("div", { class: "dsec", style: "width:100%" }, h("h3", { text: "Rabbit holes" }),
+  box.replaceChildren(...((holes || []).length ? [h("div", { class: "dsec", style: "width:100%" }, h("h3", { text: "Related topics" }),
     h("div", { class: "holes" }, holes.map((t) => h("button", { class: "chip", type: "button", disabled: state.busy || !canDive() || null, text: t,
       onclick: () => { $("#topic").value = t; closeDrawer(); build(t); } }))))] : []));
 }
@@ -588,8 +587,8 @@ fetch("/api/health").then((r) => r.json()).then((hl) => {
     $("#access").hidden = false;
     try { $("#accessCode").value = localStorage.getItem(AKEY) || ""; } catch {}
   }
-  if (hl.closed) setStatus("Searching is turned off on this deployment. The example below is fully explorable.");
-  else if (missing.length) setStatus(`The server is missing ${missing.join(" and ")}. Add ${missing.length > 1 ? "them" : "it"} to .env and restart. The example below still works.`, "err");
-  else setStatus(`Ready. Name a topic and dive.${hl.commons ? "" : " (Wikimedia Commons images are off until WIKIMEDIA_CONTACT is set.)"}`);
+  if (hl.closed) setStatus("Searching is off on this site. You can still browse the example.");
+  else if (missing.length) setStatus(`The server is missing ${missing.join(" and ")}. Add ${missing.length > 1 ? "them" : "it"} to .env and restart. You can still browse the example.`, "err");
+  else setStatus("Ready.");
   $("#diveBtn").disabled = !canDive();
 }).catch(() => setStatus("Couldn't reach the server. Start it with npm start.", "err"));
