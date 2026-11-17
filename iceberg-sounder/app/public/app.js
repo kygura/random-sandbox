@@ -134,16 +134,40 @@ function renderHero() {
       h("span", {}, h("b", { text: `${done}/6` }), " levels charted")));
 }
 
+/* One image per entry, drawn from its cited sources. Prefer an image no other
+   entry uses yet; never repeat one inside a level (those entries get a letter tile). */
+function pickThumbs(ice) {
+  const usedAll = new Set(); const picks = new Map();
+  ice.layers.forEach((l, li) => {
+    const usedHere = new Set();
+    l.entries.forEach((e, ei) => {
+      const cands = e.sources.map((id) => sourceById(ice, id)).filter((s) => s && thumbOf(s) && !usedHere.has(thumbOf(s)));
+      const s = cands.find((c) => !usedAll.has(thumbOf(c))) || cands[0];
+      if (s) { usedAll.add(thumbOf(s)); usedHere.add(thumbOf(s)); picks.set(li + ":" + ei, s); }
+    });
+  });
+  return picks;
+}
+function entryThumb(e, src) {
+  const box = h("span", { class: "ethumb", "aria-hidden": "true" });
+  const letter = () => h("span", { class: "mono-letter", text: (e.term.match(/[\p{L}\p{N}]/u) || ["·"])[0].toUpperCase() });
+  const pic = src ? img(thumbOf(src), { alt: "", onfail: (el) => el.replaceWith(letter()) }) : null;
+  box.append(pic || letter());
+  if (pic && videoOf(src.url)) box.append(h("span", { class: "vid" }, svg("play")));
+  return box;
+}
+
 function levelEl(i) {
   const z = ZONES[i]; const layer = state.ice.layers[i];
   const open = state.open && state.open.li === i ? state.open.ei : -1;
+  const thumbs = pickThumbs(state.ice);
   let inner;
   if (layer.status === "done" && layer.entries.length) {
     inner = layer.entries.map((e, k) => h("button", {
       class: "entry " + (e.confidence || "established") + (k === open ? " open" : ""), type: "button",
       "aria-label": `${e.term}. ${e.confidence || "established"}, ${e.sources.length} source${e.sources.length === 1 ? "" : "s"}`,
       onclick: () => openEntry(i, k),
-    }, e.term, e.sources.length ? h("sup", { text: String(e.sources.length) }) : null));
+    }, entryThumb(e, thumbs.get(i + ":" + k)), h("span", { class: "et" }, e.term, e.sources.length ? h("sup", { text: String(e.sources.length) }) : null)));
   } else if (["pending", "searching", "charting"].includes(layer.status)) {
     inner = [5, 8, 4, 7].map((w) => h("span", { class: "skel", style: `width:${w}em` }));
   } else if (layer.status === "error") {
@@ -305,6 +329,7 @@ async function build(topic) {
         const at = ice.sources.findIndex((x) => x.id === s.id);
         if (at >= 0) ice.sources[at] = s; else ice.sources.push(s);
         renderSeabed(true); renderHero();
+        if (s.image && ice.layers.some((l) => l.entries.some((en) => en.sources.includes(s.id)))) renderOcean();
       } else if (ev.type === "layer") {
         const l = ice.layers[ev.index]; if (!l) continue;
         l.status = ev.status;
