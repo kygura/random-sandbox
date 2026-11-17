@@ -24,9 +24,11 @@ Past searches and a pre-built example (the Voynich manuscript) are in the **Save
 
 ## How a dive works
 
-1. Claude (`claude-opus-5-5`) reads the topic and your notes and plans three search queries for each level, plus searches for videos, image-rich pages, papers and Commons images.
+1. Claude (`claude-opus-5-5`) reads the topic and your notes and plans three search queries for each level (at least one aimed at an official record or primary document), one search for the topic's official records, plus searches for videos, image-rich pages, papers and Commons images.
 2. The server runs them through Exa and streams results to the browser as they arrive.
-3. Claude charts each level from that level's results only, using structured output. Entries that cite nothing are dropped.
+3. Claude charts each level from that level's results plus the topic's official records, using structured output. Entries that cite nothing are dropped.
+
+Sources are ranked by how close they are to the original (`public/provenance.js`): official records (government, courts, legislation, patents), then archives, libraries and museums, scholarship, reference works, press, other sites, and video last. Claude is told to cite the closest source, and the server sorts each entry's citations by that rank. Media follows the same order: document scans and archival photos before decorative images, official or archival footage before other video.
 4. **Dig deeper** on an entry fetches the cited pages in full and streams a longer write-up with citations and follow-up topics.
 
 The Quick / Thorough / Deepest setting maps to Claude's `low` / `medium` / `high` effort. Requests use the API's server-side refusal fallback, so a declined request is retried on a fallback model instead of failing.

@@ -126,3 +126,22 @@ test("the researcher's notes reach the planning and charting prompts", async () 
   const withNotes = calls.prompts.filter((p) => p.includes("<notes>\nFocus on 1970s carbon dating\n</notes>"));
   assert.equal(withNotes.length, 7, "plan plus six charting prompts");
 });
+
+test("official records are searched for, offered to every level and cited first", async () => {
+  const { deps, calls } = fakeDeps();
+  const events = await collect((emit) => runDive({ topic: "t", depth: "quick", emit, signal: new AbortController().signal, deps }));
+  assert.ok(calls.search.includes("official records for test topic"));
+  const sources = new Map(events.filter((e) => e.type === "source").map((e) => [e.source.id, e.source]));
+  const chart = calls.prompts.filter((p) => p.includes("MEDIA (videos"));
+  for (const p of chart) {
+    assert.match(p, /\[S10\] \(Official record\) Commission report/, "the record is offered to each level, labelled");
+    assert.doesNotMatch(p, /\[S\d+\] \(Video\)/, "videos from the records search aren't offered as sources");
+  }
+  const last = new Map();
+  for (const e of events) if (e.type === "layer" && e.status === "done") last.set(e.index, e);
+  for (const ev of last.values()) {
+    const first = sources.get(ev.entries[0].sources[0]);
+    assert.equal(first.tier, "official", "Claude listed it third; the server puts it first");
+    assert.equal(ev.entries[0].sources.length, 3);
+  }
+});

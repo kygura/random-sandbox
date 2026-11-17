@@ -20,6 +20,7 @@ export function fakeDeps({ exaFails = null, chartFailsAt = -1, slowMs = 0 } = {}
         return {
           title: "Test Topic", summary: "A topic used for tests.",
           layers: ZONES.map((z) => ({ key: z.key, theme: `${z.name} theme`, queries: [`${z.key} q1`, `${z.key} q2`, `${z.key} q3`] })),
+          records: "official records for test topic",
           media: { video: "videos about test topic", images: "photos of test topic", papers: "papers on test topic" },
           commons: "test topic",
         };
@@ -28,7 +29,7 @@ export function fakeDeps({ exaFails = null, chartFailsAt = -1, slowMs = 0 } = {}
       if (ZONES.indexOf(zone) === chartFailsAt) throw new AppError("bad_output", "Claude's answer didn't match the expected format.", { source: "claude" });
       return {
         entries: [
-          { term: `${zone.name} fact one`, summary: "First.", detail: "Detail one.", sources: ["S1", "S2"], confidence: "established", media: ["M1", "M2", "M99"], image_query: `${zone.key} picture` },
+          { term: `${zone.name} fact one`, summary: "First.", detail: "Detail one.", sources: ["S1", "S2", "S10"], confidence: "established", media: ["M1", "M2", "M99"], image_query: `${zone.key} picture` },
           { term: `${zone.name} fact two`, summary: "Second.", detail: "Detail two.", sources: ["S3"], confidence: "debated", media: [], image_query: "" },
           { term: `${zone.name} uncited`, summary: "Dropped.", detail: "No sources.", sources: ["S99"], confidence: "speculative", media: [], image_query: "" },
         ],
@@ -49,6 +50,12 @@ export function fakeDeps({ exaFails = null, chartFailsAt = -1, slowMs = 0 } = {}
       await wait(signal);
       if (exaFails) throw exaFails;
       const slug = query.replace(/\W+/g, "-");
+      if (/^official records/.test(query)) {
+        return [
+          { title: "Commission report", url: `https://www.archives.gov/${slug}/report`, date: "1964-09-24", author: "", image: "", favicon: "", text: "The official report." },
+          { title: "A video of the hearing", url: "https://www.youtube.com/watch?v=abcdefghijk", date: "", author: "", image: "", favicon: "", text: "" },
+        ];
+      }
       if (includeDomains?.includes("youtube.com")) {
         return [{ title: `Video for ${query}`, url: "https://www.youtube.com/watch?v=8NS4CbBJQ84", date: "2017-05-25", author: "TED-Ed", image: "", favicon: "", text: "A video." }];
       }

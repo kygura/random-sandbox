@@ -1,6 +1,7 @@
 import { ZONES as ZONE_TEXT } from "./zones.js";
 import { EXAMPLE } from "./example.js";
 import { createNotesEditor } from "./editor.js";
+import { tierOf, rankOf, labelOf } from "./provenance.js";
 
 const ZONES = ZONE_TEXT;
 
@@ -47,16 +48,7 @@ function videoOf(url) {
   } catch {}
   return null;
 }
-function kindOf(s) {
-  const u = String(s.url).toLowerCase();
-  if (videoOf(s.url)) return "video";
-  if (s.commons || /\.(jpe?g|png|gif|webp|tiff?|svg)(\?|$)/.test(u) || /flickr\.com|unsplash|iiif|artsandculture\.google|loc\.gov\/pictures/.test(u)) return "image";
-  if (/\.pdf(\?|$)/.test(u) || /doi\.org|arxiv\.org|aclanthology|jstor\.org|tandfonline|ncbi\.nlm|springer|sciencedirect|wiley\.com|ceur-ws|researchgate|academia\.edu|semanticscholar|ssrn\.com|nature\.com|plos\.org|journals\.|cambridge\.org\/core|muse\.jhu/.test(u)) return "paper";
-  if (/archive\.org|wikisource|gutenberg|hathitrust|archiv|museum|library|newspapers\.com|chroniclingamerica/.test(u)) return "archive";
-  return "article";
-}
 const thumbOf = (s) => s.image || videoOf(s.url)?.thumb || "";
-const KIND_LABEL = { video: "Video", image: "Image", paper: "Paper", archive: "Archive", article: "Article" };
 const ICON = {
   chev: '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>',
@@ -125,12 +117,16 @@ const missingKeys = () => [!userKeys.anthropic && !server.claude && "Anthropic",
 const sourceById = (ice, id) => ice.sources.find((s) => s.id === id);
 const zoneOf = (key) => ZONES.find((z) => z.key === key);
 const isMedia = (s) => !!s && (!!videoOf(s.url) || !!s.image);
-/* An entry's media: what was attached to it first, then any cited source that is a video or has a picture. */
+/* Closeness to the original record. Older saves have no tier, so it's worked out from the address. */
+const tierOfSource = (s) => s.tier || tierOf(s.url);
+const byCloseness = (list) => list.map((s, k) => ({ s, k, r: rankOf(tierOfSource(s)) })).sort((a, b) => a.r - b.r || a.k - b.k).map((x) => x.s);
+const tierTag = (s) => { const t = tierOfSource(s); return h("span", { class: "tier t-" + t, text: labelOf(t) }); };
+/* An entry's media, closest to the original first: what was attached to it, then any cited source with a picture or video. */
 function mediaOf(ice, e) {
   const ids = [...(e.media || []), ...e.sources];
   const out = [];
   for (const id of ids) { const s = sourceById(ice, id); if (isMedia(s) && !out.includes(s)) out.push(s); }
-  return out;
+  return byCloseness(out);
 }
 
 function renderHero() {
@@ -291,7 +287,7 @@ function renderSources() {
   const more = $("#srcMore");
   more.hidden = all;
   more.textContent = `Show all ${ice.sources.length} sources`;
-  $("#sources").replaceChildren(...ice.sources.map((s, n) => {
+  $("#sources").replaceChildren(...byCloseness(ice.sources).map((s, n) => {
     const th = h("span", { class: "sthumb" });
     const pic = img(thumbOf(s), { alt: "", onfail: (el) => { const f = img(s.favicon, { cls: "favicon" }); f ? el.replaceWith(f) : el.remove(); } }) || img(s.favicon, { cls: "favicon" });
     if (pic) th.append(pic);
@@ -300,7 +296,7 @@ function renderSources() {
       h("div", {},
         h("a", { class: "stitle", href: s.url, target: "_blank", rel: "noopener noreferrer", text: s.title || s.url }),
         h("div", { class: "smeta" },
-          h("span", { class: "kind", text: KIND_LABEL[kindOf(s)] }),
+          tierTag(s),
           h("span", { text: hostOf(s.url) }),
           s.author ? h("span", { text: s.author }) : null,
           s.license ? h("span", { class: "lic", text: s.license }) : null,
@@ -509,7 +505,7 @@ function closeDrawer() {
 function stageEl(s) {
   const v = videoOf(s.url);
   const cap = h("div", { class: "mcap" },
-    h("span", { class: "kind", text: v ? "Video" : "Image" }),
+    h("span", { class: "kind", text: `${v ? "Video" : "Image"} · ${labelOf(tierOfSource(s))}` }),
     h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer", text: s.title || hostOf(s.url) }),
     h("span", { class: "h", text: [`[${s.id}]`, hostOf(s.url), s.author, s.license].filter(Boolean).join(" · ") }));
   if (v) return h("figure", { class: "stage" }, h("div", { class: "frame" }, playerEl(s)), cap);
@@ -589,7 +585,7 @@ function openEntry(li, ei, mediaId) {
   $("#dZone").replaceChildren(h("span", { text: `Level ${z.level} of 6` }), h("b", { text: z.name }));
   document.querySelectorAll(".entry.open").forEach((el) => el.classList.remove("open"));
   document.querySelectorAll(`#lv-${z.key} .entry`)[ei]?.classList.add("open");
-  const srcs = e.sources.map((id) => sourceById(ice, id)).filter(Boolean);
+  const srcs = byCloseness(e.sources.map((id) => sourceById(ice, id)).filter(Boolean));
 
   const mediaBox = h("div", { class: "mmedia" });
   renderModalMedia(ice, e, mediaBox, mediaId, false);
@@ -619,7 +615,7 @@ function openEntry(li, ei, mediaId) {
         const th = h("span", { class: "cthumb" }); const t = img(thumbOf(s), { alt: "" }); if (t) th.append(t);
         return h("li", {}, h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" },
           h("span", { class: "sid", text: `[${s.id}]` }), th,
-          h("span", {}, h("div", { class: "t", text: s.title }), h("div", { class: "x", text: `${hostOf(s.url)}${s.excerpt ? " — " + s.excerpt : ""}` }))));
+          h("span", {}, h("div", { class: "t", text: s.title }), h("div", { class: "x" }, tierTag(s), ` ${hostOf(s.url)}${s.excerpt ? " — " + s.excerpt : ""}`))));
       }))),
   ].filter(Boolean));
 
@@ -643,7 +639,7 @@ function splitHoles(text) {
 async function digDeeper(ice, e, ui) {
   deepCtl?.abort();
   const ctl = deepCtl = new AbortController();
-  const srcs = e.sources.map((id) => sourceById(ice, id)).filter(Boolean).slice(0, 3);
+  const srcs = byCloseness(e.sources.map((id) => sourceById(ice, id)).filter(Boolean)).slice(0, 3);
   ui.digBtn.disabled = true; ui.stopBtn.hidden = false; ui.deepErr.hidden = true;
   ui.deepBox.hidden = false; ui.holesBox.replaceChildren();
   ui.deepBox.innerHTML = `<p class="think">Starting…</p>`;

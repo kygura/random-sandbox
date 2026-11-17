@@ -20,12 +20,13 @@ export const PlanSchema = z.object({
   layers: z.array(z.object({
     key: z.enum(LAYER_KEYS),
     theme: z.string().describe("One line: what this layer covers for this topic"),
-    queries: z.array(z.string()).describe("Exactly 3 web search queries"),
+    queries: z.array(z.string()).describe("Exactly 3 web search queries; at least one targets an official record or primary document"),
   })),
+  records: z.string().describe("Search for the official records and primary documents behind the topic"),
   media: z.object({
-    video: z.string().describe("Search for YouTube videos, lectures or documentaries"),
-    images: z.string().describe("Search for pages with photographs, scans, maps or diagrams"),
-    papers: z.string().describe("Search for academic papers"),
+    video: z.string().describe("Search for official, archival or institutional video: archive footage, the organisation's own channel, public-broadcaster documentaries, lectures by named experts"),
+    images: z.string().describe("Search for pages showing original material: document scans, archival photographs, museum or library collection records, official maps or diagrams"),
+    papers: z.string().describe("Search for peer-reviewed papers"),
   }),
   commons: z.string().describe("2-4 keyword search for Wikimedia Commons images"),
 });
