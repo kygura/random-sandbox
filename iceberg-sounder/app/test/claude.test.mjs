@@ -41,7 +41,7 @@ const client = () => new Anthropic({ apiKey: "test-key", baseURL: base, maxRetri
 
 test("structured() sends a JSON schema, effort and the refusal fallback, and parses the reply", async () => {
   seen = [];
-  const payload = { entries: [{ term: "A", summary: "s", detail: "d", sources: ["S1"], confidence: "debated" }] };
+  const payload = { entries: [{ term: "A", summary: "s", detail: "d", sources: ["S1"], confidence: "debated", media: ["M2"], image_query: "a thing" }] };
   reply = (b) => message(b.model, JSON.stringify(payload));
   const claude = createClaude({ client: client() });
   const out = await claude.structured("prompt", ChartSchema, { depth: "deep" });

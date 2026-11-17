@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runDive, runDeep } from "../lib/pipeline.mjs";
+import { runDive, runDeep, findEntryMedia, isVideoUrl } from "../lib/pipeline.mjs";
 import { AppError } from "../lib/errors.mjs";
 import { fakeDeps } from "./fakes.mjs";
 
@@ -16,7 +16,9 @@ test("a dive charts six layers and every cited id points at an emitted source", 
   const plan = events.find((e) => e.type === "plan");
   assert.equal(plan.title, "Test Topic");
   const sources = new Map(events.filter((e) => e.type === "source").map((e) => [e.source.id, e.source]));
-  const done = events.filter((e) => e.type === "layer" && e.status === "done");
+  const lastDone = new Map();
+  for (const e of events) if (e.type === "layer" && e.status === "done") lastDone.set(e.index, e);
+  const done = [...lastDone.values()];
   assert.equal(done.length, 6);
   for (const l of done) {
     assert.equal(l.entries.length, 2, "entries citing unknown tags are dropped");
@@ -73,4 +75,47 @@ test("deep dive streams text and finishes", async () => {
   const text = events.filter((e) => e.type === "text").map((e) => e.delta).join("");
   assert.match(text, /Rabbit holes: Alpha \| Beta \| Gamma/);
   assert.equal(events.at(-1).type, "done");
+});
+
+test("entries carry media that Claude attached plus per-entry Commons pictures", async () => {
+  const { deps, calls } = fakeDeps();
+  const events = await collect((emit) => runDive({ topic: "t", depth: "quick", emit, signal: new AbortController().signal, deps }));
+  const sources = new Map(events.filter((e) => e.type === "source").map((e) => [e.source.id, e.source]));
+  const chartPrompts = calls.prompts.filter((p) => p.includes("MEDIA (videos"));
+  assert.equal(chartPrompts.length, 6);
+  assert.match(chartPrompts[0], /\[M1\] (video|image)/, "the media pool is offered to Claude");
+  // last layer event per index carries the enriched entries
+  const last = new Map();
+  for (const e of events) if (e.type === "layer" && e.status === "done") last.set(e.index, e);
+  for (const ev of last.values()) {
+    const [one, two] = ev.entries;
+    assert.ok(one.media.length >= 3, "two pool items plus a Commons picture");
+    for (const id of one.media) {
+      const s = sources.get(id);
+      assert.ok(s, `media ${id} is an emitted source`);
+      assert.ok(isVideoUrl(s.url) || s.image, "media is a video or has an image");
+    }
+    assert.ok(one.media.some((id) => sources.get(id).commons), "Commons picture attached");
+    assert.deepEqual(two.media, [], "no media when none fits");
+  }
+  assert.ok(calls.commons.includes("tip picture"), "per-entry image_query is searched");
+});
+
+test("unattached pool media stays out of the source list", async () => {
+  const { deps } = fakeDeps();
+  deps.claude.structured = ((orig) => async (prompt, schema, o) => {
+    const out = await orig(prompt, schema, o);
+    if (out.entries) out.entries.forEach((e) => { e.media = []; e.image_query = ""; });
+    return out;
+  })(deps.claude.structured);
+  const events = await collect((emit) => runDive({ topic: "t", depth: "quick", emit, signal: new AbortController().signal, deps }));
+  const urls = events.filter((e) => e.type === "source").map((e) => e.source.url);
+  assert.ok(!urls.some((u) => u.includes("youtube.com")), "the unused video isn't listed");
+});
+
+test("findEntryMedia returns videos and Commons images for one entry", async () => {
+  const { deps } = fakeDeps();
+  const items = await findEntryMedia({ topic: "Topic", term: "Thing", signal: new AbortController().signal, deps });
+  assert.ok(items.some((x) => isVideoUrl(x.url)));
+  assert.ok(items.some((x) => x.commons && x.license));
 });

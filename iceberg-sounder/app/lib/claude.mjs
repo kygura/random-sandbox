@@ -37,6 +37,8 @@ export const ChartSchema = z.object({
     detail: z.string(),
     sources: z.array(z.string()),
     confidence: z.enum(["established", "debated", "speculative"]),
+    media: z.array(z.string()).describe("Tags of MEDIA items that show this entry; empty if none fit"),
+    image_query: z.string().describe("2-4 keywords for Wikimedia Commons, or empty"),
   })),
 });
 

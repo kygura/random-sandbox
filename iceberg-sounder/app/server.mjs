@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { createClaude, modelId } from "./lib/claude.mjs";
 import { createExa } from "./lib/exa.mjs";
 import { createCommons } from "./lib/commons.mjs";
-import { runDive, runDeep } from "./lib/pipeline.mjs";
+import { runDive, runDeep, findEntryMedia } from "./lib/pipeline.mjs";
+import { publicError } from "./lib/errors.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(here, "public");
@@ -66,6 +67,21 @@ export function createApp(deps = { claude: createClaude(), exa: createExa(), com
         if (running >= maxDives) return send(res, 429, { error: { code: "busy", message: "Too many dives running at once. Try again in a minute." } });
         running++;
         return ndjson(req, res, (emit, signal) => runDive({ topic, depth, emit, signal, deps })).finally(() => { running--; });
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/media") {
+        const body = await readJson(req);
+        const topic = clean(body.topic, 160), term = clean(body.term, 120);
+        if (!topic || !term) return send(res, 400, { error: { code: "bad_request", message: "Missing topic or entry." } });
+        const ctl = new AbortController();
+        res.on("close", () => { if (!res.writableEnded) ctl.abort(); });
+        try {
+          const items = await findEntryMedia({ topic, term, signal: ctl.signal, deps });
+          return send(res, 200, { items });
+        } catch (e) {
+          if (ctl.signal.aborted) return;
+          return send(res, 502, { error: publicError(e) });
+        }
       }
 
       if (req.method === "POST" && url.pathname === "/api/deep") {

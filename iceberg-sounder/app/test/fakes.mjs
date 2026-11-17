@@ -4,7 +4,7 @@ import { ZONES } from "../public/zones.js";
 import { AppError } from "../lib/errors.mjs";
 
 export function fakeDeps({ exaFails = null, chartFailsAt = -1, slowMs = 0 } = {}) {
-  const calls = { structured: 0, search: [], contents: 0, stream: 0 };
+  const calls = { structured: 0, search: [], contents: 0, stream: 0, commons: [], prompts: [] };
   const wait = (signal) => new Promise((res, rej) => {
     const t = setTimeout(res, slowMs);
     signal?.addEventListener("abort", () => { clearTimeout(t); rej(Object.assign(new Error("aborted"), { name: "AbortError" })); }, { once: true });
@@ -14,6 +14,7 @@ export function fakeDeps({ exaFails = null, chartFailsAt = -1, slowMs = 0 } = {}
     configured: true,
     async structured(prompt, schema, { signal } = {}) {
       calls.structured++;
+      calls.prompts.push(prompt);
       await wait(signal);
       if (prompt.includes('planning an "iceberg"')) {
         return {
@@ -27,9 +28,9 @@ export function fakeDeps({ exaFails = null, chartFailsAt = -1, slowMs = 0 } = {}
       if (ZONES.indexOf(zone) === chartFailsAt) throw new AppError("bad_output", "Claude's answer didn't match the expected format.", { source: "claude" });
       return {
         entries: [
-          { term: `${zone.name} fact one`, summary: "First.", detail: "Detail one.", sources: ["S1", "S2"], confidence: "established" },
-          { term: `${zone.name} fact two`, summary: "Second.", detail: "Detail two.", sources: ["S3"], confidence: "debated" },
-          { term: `${zone.name} uncited`, summary: "Dropped.", detail: "No sources.", sources: ["S99"], confidence: "speculative" },
+          { term: `${zone.name} fact one`, summary: "First.", detail: "Detail one.", sources: ["S1", "S2"], confidence: "established", media: ["M1", "M2", "M99"], image_query: `${zone.key} picture` },
+          { term: `${zone.name} fact two`, summary: "Second.", detail: "Detail two.", sources: ["S3"], confidence: "debated", media: [], image_query: "" },
+          { term: `${zone.name} uncited`, summary: "Dropped.", detail: "No sources.", sources: ["S99"], confidence: "speculative", media: [], image_query: "" },
         ],
       };
     },
@@ -61,8 +62,10 @@ export function fakeDeps({ exaFails = null, chartFailsAt = -1, slowMs = 0 } = {}
 
   const commons = {
     configured: true,
-    async searchImages() {
-      return [{ title: "Commons picture", url: "https://commons.wikimedia.org/wiki/File:Test.jpg", image: "https://upload.wikimedia.org/test.jpg", author: "Someone", license: "CC BY-SA 4.0", text: "" }];
+    async searchImages(q) {
+      calls.commons.push(q);
+      const slug = String(q).replace(/\W+/g, "_");
+      return [{ title: `Commons picture ${q}`, url: `https://commons.wikimedia.org/wiki/File:${slug}.jpg`, image: `https://upload.wikimedia.org/test/${slug}.jpg`, author: "Someone", license: "CC BY-SA 4.0", text: "" }];
     },
   };
 

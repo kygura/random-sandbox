@@ -44,3 +44,10 @@ test("streams a full dive as NDJSON", async () => {
   assert.equal(lines[0].type, "status");
   assert.equal(lines.at(-1).type, "done");
 });
+
+test("media endpoint returns items for one entry", async () => {
+  const r = await fetch(base + "/api/media", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ topic: "T", term: "Thing" }) });
+  assert.equal(r.status, 200);
+  const j = await r.json();
+  assert.ok(j.items.length >= 2);
+});

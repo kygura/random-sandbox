@@ -32,9 +32,14 @@ Then write three media searches (videos, image-rich pages, academic papers) and 
 List the six layers in the order above. If the topic is ambiguous, pick the most likely meaning.`;
 }
 
-export function chartPrompt(title, zone, theme, otherThemes, local) {
+export const isVideoUrl = (u) => /^https?:\/\/(www\.|m\.)?(youtube\.com\/(watch|shorts|embed|live)|youtu\.be\/|vimeo\.com\/\d|player\.vimeo\.com\/video\/\d)/i.test(String(u));
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch { return ""; } };
+
+export function chartPrompt(title, zone, theme, otherThemes, local, media = []) {
   const srcText = local.map(({ tag, r }) =>
     `[${tag}] ${r.title || "(untitled)"} — ${r.url}${r.date ? " (" + r.date.slice(0, 10) + ")" : ""}\n${(r.text || "").slice(0, 900)}`).join("\n\n");
+  const mediaText = media.map(({ tag, r }) =>
+    `[${tag}] ${isVideoUrl(r.url) ? "video" : "image"} — ${r.title || "(untitled)"} — ${hostOf(r.url)}${r.author ? " — " + r.author : ""}\n${(r.text || "").slice(0, 240)}`).join("\n");
   return `You are filling one layer of an iceberg research chart.
 Topic: ${title}
 This layer: ${zone.name} (level ${zone.level} of 6) — ${zone.brief}.
@@ -49,9 +54,14 @@ Write 4 to 6 entries for THIS layer only. Each entry is one fact, person, event,
 - "summary" is one plain sentence. "detail" is 2 to 4 plain sentences.
 - "confidence" is "established" (well documented), "debated" (credible sources disagree) or "speculative" (fringe or unverified). The trench layer is mostly debated or speculative.
 - Skip anything that belongs on a shallower or deeper layer.
+- "media" lists tags of MEDIA items below that clearly show or discuss this specific entry. Leave it empty when nothing fits; don't attach media that is only about the topic in general.
+- "image_query" is 2 to 4 keywords for finding a photo, scan, map or diagram of this entry on Wikimedia Commons, or "" if the entry is too abstract to picture.
 
 SOURCES
-${srcText}`;
+${srcText}
+
+MEDIA (videos and images found for the topic; also untrusted)
+${mediaText || "(none found)"}`;
 }
 
 export function deepPrompt(topic, entry, sources, pages) {
@@ -127,21 +137,30 @@ export async function runDive({ topic, depth, emit, signal, deps }) {
   const markFatal = (e) => { if (!fatal) { fatal = e; inner.abort(); } };
   const others = (i) => ZONES.map((z, j) => (j === i ? null : `${z.name}: ${plans[j].theme || z.brief}`)).filter(Boolean).join("; ");
 
-  // Media: videos (embeddable hosts only), image-rich pages, papers, Commons images.
-  // Each job settles on its own and never rejects.
+  // Media pool: videos (embeddable hosts only), image-rich pages and Commons images.
+  // Nothing here becomes a source until Claude attaches it to an entry.
+  // Papers are not media; those go straight into the source list.
+  const pool = [];
+  const toPool = (r, extra = {}) => {
+    if (!r?.url || !(isVideoUrl(r.url) || r.image)) return;
+    if (pool.some((m) => normUrl(m.r.url) === normUrl(r.url))) return;
+    pool.push({ tag: "M" + (pool.length + 1), r, extra });
+  };
   const mediaJobs = [
-    [plan.media?.video, { numResults: 8, includeDomains: ["youtube.com", "vimeo.com"] }],
-    [plan.media?.images, { numResults: 8 }],
-    [plan.media?.papers, { numResults: 6 }],
-  ].filter(([q]) => str(q)).map(([q, opts]) =>
+    [plan.media?.video, { numResults: 8, includeDomains: ["youtube.com", "vimeo.com"] }, toPool],
+    [plan.media?.images, { numResults: 8 }, toPool],
+    [plan.media?.papers, { numResults: 6 }, (r) => addSource(r)],
+  ].filter(([q]) => str(q)).map(([q, opts, take]) =>
     exaQ(() => (sig.aborted ? [] : exa.search(str(q, 300), { ...opts, signal: sig })))
-      .then((rs) => rs.forEach((r) => addSource(r)))
+      .then((rs) => rs.forEach((r) => take(r)))
       .catch((e) => { if (e?.fatal) markFatal(e); }));
   if (commons?.configured) {
     mediaJobs.push(commons.searchImages(str(plan.commons, 120) || title, { limit: 12, signal: sig })
-      .then((imgs) => imgs.forEach((im) => addSource(im, { license: im.license, commons: true })))
+      .then((imgs) => imgs.forEach((im) => toPool(im, { license: im.license, commons: true })))
       .catch((e) => { if (!isAbort(e, sig)) emit({ type: "status", text: `Wikimedia Commons image search failed: ${e.message}` }); }));
   }
+  const poolReady = Promise.all(mediaJobs);
+  const commonsQ = limiter(3);
 
   const layerJobs = ZONES.map((z, i) => (async () => {
     emit({ type: "layer", index: i, status: "searching" });
@@ -151,23 +170,52 @@ export async function runDive({ topic, depth, emit, signal, deps }) {
         return [];
       })));
     if (sig.aborted) return 0;
-    const seen = new Set(); const pool = [];
-    for (const r of batches.flat()) { const k = normUrl(r.url); if (!seen.has(k)) { seen.add(k); pool.push(r); } }
-    if (!pool.length) { emit({ type: "layer", index: i, status: "empty", entries: [] }); return 0; }
+    const seen = new Set(); const found = [];
+    for (const r of batches.flat()) { const k = normUrl(r.url); if (!seen.has(k)) { seen.add(k); found.push(r); } }
+    if (!found.length) { emit({ type: "layer", index: i, status: "empty", entries: [] }); return 0; }
 
     emit({ type: "layer", index: i, status: "charting" });
-    const local = pool.slice(0, 12).map((r, k) => ({ tag: "S" + (k + 1), r }));
+    const local = found.slice(0, 12).map((r, k) => ({ tag: "S" + (k + 1), r }));
+    await poolReady;
+    if (sig.aborted) return 0;
+    const media = pool.slice(0, 24);
+    const tagOf = (t) => String(t).replace(/[^\w]/g, "").toUpperCase();
     const out = await claudeQ(() => {
       if (sig.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
-      return claude.structured(chartPrompt(title, z, plans[i].theme, others(i), local), ChartSchema, { depth, signal: sig });
+      return claude.structured(chartPrompt(title, z, plans[i].theme, others(i), local, media), ChartSchema, { depth, signal: sig });
     });
-    const entries = (out.entries || []).map((e) => {
+    const raw = (out.entries || []).map((e) => {
       const ids = [...new Set((e.sources || [])
-        .map((t) => local.find((x) => x.tag === String(t).replace(/[^\w]/g, "").toUpperCase()))
+        .map((t) => local.find((x) => x.tag === tagOf(t)))
         .filter(Boolean).map((x) => addSource(x.r)).filter(Boolean))];
-      return { term: str(e.term, 80), summary: str(e.summary, 500), detail: str(e.detail, 1400), sources: ids, confidence: e.confidence };
-    }).filter((e) => e.term && e.sources.length).slice(0, 6);
+      return { e, entry: { term: str(e.term, 80), summary: str(e.summary, 500), detail: str(e.detail, 1400), sources: ids, confidence: e.confidence, media: [] } };
+    }).filter(({ entry }) => entry.term && entry.sources.length).slice(0, 6);
+    for (const { e, entry } of raw) {
+      entry.media = [...new Set((e.media || [])
+        .map((t) => media.find((m) => m.tag === tagOf(t)))
+        .filter(Boolean).map((m) => addSource(m.r, m.extra)).filter(Boolean))].slice(0, 6);
+    }
+    const entries = raw.map((x) => x.entry);
     emit({ type: "layer", index: i, status: entries.length ? "done" : "empty", entries });
+
+    // Per-entry pictures from Wikimedia Commons, added after the level is on screen.
+    if (commons?.configured && entries.length) {
+      const before = JSON.stringify(entries.map((x) => x.media));
+      await Promise.all(raw.map(({ e, entry }) => {
+        const q = str(e.image_query, 80);
+        if (!q) return null;
+        return commonsQ(() => (sig.aborted ? [] : commons.searchImages(q, { limit: 4, signal: sig })))
+          .then((imgs) => {
+            for (const im of imgs.slice(0, 3)) {
+              const id = addSource(im, { license: im.license, commons: true });
+              if (id && !entry.media.includes(id) && entry.media.length < 8) entry.media.push(id);
+            }
+          })
+          .catch(() => {});
+      }));
+      if (!sig.aborted && JSON.stringify(entries.map((x) => x.media)) !== before)
+        emit({ type: "layer", index: i, status: "done", entries });
+    }
     return entries.length ? 1 : 0;
   })().catch((e) => {
     if (e?.fatal) { markFatal(e); return 0; }
@@ -177,12 +225,28 @@ export async function runDive({ topic, depth, emit, signal, deps }) {
   }));
 
   const counts = await Promise.all(layerJobs);
-  await Promise.all(mediaJobs);
+  await poolReady;
   signal.removeEventListener("abort", onOuterAbort);
   if (signal.aborted) return;
   if (fatal) { emit({ type: "error", error: publicError(fatal) }); return; }
   const charted = counts.reduce((a, b) => a + b, 0);
   emit({ type: "done", charted, sources: sources.length });
+}
+
+/* ---------- Media for one entry (asked for when its panel opens) ---------- */
+export async function findEntryMedia({ topic, term, signal, deps }) {
+  const { exa, commons } = deps;
+  const out = [];
+  const [videos, images] = await Promise.all([
+    exa.search(`Video explaining ${term} (${topic})`, { numResults: 4, includeDomains: ["youtube.com", "vimeo.com"], signal })
+      .catch((e) => { if (e?.fatal) throw e; return []; }),
+    commons?.configured
+      ? commons.searchImages(`${term} ${topic}`.slice(0, 100), { limit: 4, signal }).catch(() => [])
+      : [],
+  ]);
+  for (const r of videos) if (isVideoUrl(r.url)) out.push({ title: r.title, url: r.url, author: r.author, date: r.date, image: r.image, favicon: r.favicon, excerpt: str(r.text, 320) });
+  for (const im of images) out.push({ title: im.title, url: im.url, author: im.author, image: im.image, license: im.license, commons: true, excerpt: str(im.text, 320) });
+  return out;
 }
 
 /* ---------- Deep dive ---------- */

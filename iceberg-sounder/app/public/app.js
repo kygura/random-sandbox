@@ -114,12 +114,20 @@ const canDive = () => server.ok && server.claude && server.exa;
 /* ===== Rendering ===== */
 const sourceById = (ice, id) => ice.sources.find((s) => s.id === id);
 const zoneOf = (key) => ZONES.find((z) => z.key === key);
+const isMedia = (s) => !!s && (!!videoOf(s.url) || !!s.image);
+/* An entry's media: what was attached to it first, then any cited source that is a video or has a picture. */
+function mediaOf(ice, e) {
+  const ids = [...(e.media || []), ...e.sources];
+  const out = [];
+  for (const id of ids) { const s = sourceById(ice, id); if (isMedia(s) && !out.includes(s)) out.push(s); }
+  return out;
+}
 
 function renderHero() {
   const ice = state.ice;
   const entries = ice.layers.reduce((n, l) => n + l.entries.length, 0);
   const done = ice.layers.filter((l) => l.status === "done").length;
-  const media = ice.sources.filter((s) => thumbOf(s)).length;
+  const media = ice.layers.reduce((n, l) => n + l.entries.filter((e) => mediaOf(ice, e).length).length, 0);
   $("#hero").replaceChildren(
     h("div", { class: "eyebrow" },
       h("span", { text: ice.example ? "Charted example" : "Iceberg" }),
@@ -130,18 +138,18 @@ function renderHero() {
     h("div", { class: "readouts" },
       h("span", {}, h("b", { text: String(entries) }), " entries"),
       h("span", {}, h("b", { text: String(ice.sources.length) }), " sources"),
-      h("span", {}, h("b", { text: String(media) }), " with images or video"),
+      h("span", {}, h("b", { text: String(media) }), " entries with images or video"),
       h("span", {}, h("b", { text: `${done}/6` }), " levels charted")));
 }
 
-/* One image per entry, drawn from its cited sources. Prefer an image no other
+/* One image per entry, drawn from its media. Prefer an image no other
    entry uses yet; never repeat one inside a level (those entries get a letter tile). */
 function pickThumbs(ice) {
   const usedAll = new Set(); const picks = new Map();
   ice.layers.forEach((l, li) => {
     const usedHere = new Set();
     l.entries.forEach((e, ei) => {
-      const cands = e.sources.map((id) => sourceById(ice, id)).filter((s) => s && thumbOf(s) && !usedHere.has(thumbOf(s)));
+      const cands = mediaOf(ice, e).filter((s) => thumbOf(s) && !usedHere.has(thumbOf(s)));
       const s = cands.find((c) => !usedAll.has(thumbOf(c))) || cands[0];
       if (s) { usedAll.add(thumbOf(s)); usedHere.add(thumbOf(s)); picks.set(li + ":" + ei, s); }
     });
@@ -189,7 +197,29 @@ function levelEl(i) {
       h("span", { class: "name", text: z.name }),
       h("span", { class: "theme", text: layer.theme || z.short }),
       h("span", { class: "count" + (busy ? " busy" : ""), text: count })),
-    h("div", { class: "entries" }, inner)));
+    h("div", { class: "entries" }, inner),
+    levelMedia(i)));
+}
+/* Every picture and video attached to this level's entries, each opening its entry. */
+function levelMedia(i) {
+  const ice = state.ice; const layer = ice.layers[i];
+  if (layer.status !== "done") return null;
+  const seen = new Set(); const items = [];
+  layer.entries.forEach((e, k) => mediaOf(ice, e).forEach((s) => {
+    if (seen.has(s.id)) return; seen.add(s.id); items.push({ s, k, e });
+  }));
+  if (!items.length) return null;
+  return h("div", { class: "lvmedia", role: "list", "aria-label": `Images and video for ${ZONES[i].name}` },
+    items.slice(0, 12).map(({ s, k, e }) => {
+      const v = videoOf(s.url);
+      const b = h("button", { class: "lvm" + (v ? " is-video" : ""), type: "button", role: "listitem", title: `${e.term} — ${s.title}`,
+        "aria-label": `${v ? "Video" : "Image"} for ${e.term}: ${s.title}`, onclick: () => openEntry(i, k, s.id) });
+      const im = img(thumbOf(s), { alt: "", onfail: () => b.remove() });
+      if (!im) return null;
+      b.append(im, h("span", { class: "lvm-cap", text: e.term }));
+      if (v) b.append(h("span", { class: "vid" }, svg("play")));
+      return b;
+    }));
 }
 function renderBand(i) { const old = document.getElementById("lv-" + ZONES[i].key); const el = levelEl(i); if (old) old.replaceWith(el); else $("#levels").append(el); }
 function renderOcean() { $("#levels").replaceChildren(...ZONES.map((_, i) => levelEl(i))); }
@@ -210,44 +240,6 @@ function playerEl(s, { compact = false } = {}) {
   if (compact) box.style.borderRadius = "8px";
   return box;
 }
-function galleryTile(s) {
-  const t = h("button", { class: "tile", type: "button", "aria-label": `View image: ${s.title}` });
-  const im = img(s.image, { alt: s.title, onfail: () => t.remove() });
-  if (!im) return null;
-  t.append(im, h("figcaption", {},
-    h("span", { class: "t", text: s.title }),
-    h("span", { class: "h", text: `[${s.id}] ${s.commons ? [s.author, s.license].filter(Boolean).join(" · ") || "Wikimedia Commons" : hostOf(s.url)}` })));
-  t.addEventListener("click", () => openLightbox(s));
-  return t;
-}
-function docCard(s, kind) {
-  const fav = h("span", { class: "fav" });
-  const fi = img(s.favicon, { alt: "", onfail: (el) => el.replaceWith(svg(kind === "paper" ? "paper" : "archive")) });
-  fav.append(fi || svg(kind === "paper" ? "paper" : "archive"));
-  return h("li", {}, h("a", { class: "mcard", href: s.url, target: "_blank", rel: "noopener noreferrer" }, fav,
-    h("span", {}, h("div", { class: "t", text: s.title || hostOf(s.url) }), h("div", { class: "h", text: `[${s.id}] ${hostOf(s.url)}${s.author ? " · " + s.author : ""}` }))));
-}
-function renderMedia() {
-  const ice = state.ice;
-  const videos = ice.sources.filter((s) => kindOf(s) === "video").slice(0, 9);
-  const pics = ice.sources.filter((s) => kindOf(s) !== "video" && s.image).slice(0, 24);
-  const papers = ice.sources.filter((s) => kindOf(s) === "paper").slice(0, 10);
-  const archives = ice.sources.filter((s) => kindOf(s) === "archive").slice(0, 10);
-  const blocks = [];
-  if (videos.length) blocks.push(h("div", { class: "media-block" }, h("h3", { text: `Watch · ${videos.length}` }),
-    h("div", { class: "videos" }, videos.map((s) => h("div", { class: "vcard" }, playerEl(s),
-      h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, h("div", { class: "t", text: s.title }),
-        h("div", { class: "h", text: `[${s.id}] ${hostOf(s.url)}${s.author ? " · " + s.author : ""}${s.date ? " · " + s.date.slice(0, 10) : ""}` })))))));
-  if (pics.length) blocks.push(h("div", { class: "media-block" }, h("h3", { text: `Images · ${pics.length}` }),
-    h("div", { class: "gallery" }, pics.map(galleryTile))));
-  if (papers.length) blocks.push(h("div", { class: "media-block" }, h("h3", { text: `Papers · ${papers.length}` }),
-    h("ul", { class: "doclist" }, papers.map((s) => docCard(s, "paper")))));
-  if (archives.length) blocks.push(h("div", { class: "media-block" }, h("h3", { text: `Archives & collections · ${archives.length}` }),
-    h("ul", { class: "doclist" }, archives.map((s) => docCard(s, "archive")))));
-  $("#media").replaceChildren(...blocks);
-  $("#mediaWrap").hidden = !blocks.length;
-}
-
 function citedIn(ice) {
   const map = new Map();
   ice.layers.forEach((l) => l.entries.forEach((e) => e.sources.forEach((id) => {
@@ -278,7 +270,7 @@ function renderSources() {
 let mediaTimer = 0;
 function renderSeabed(soon = false) {
   if (soon) { clearTimeout(mediaTimer); mediaTimer = setTimeout(() => renderSeabed(false), 250); return; }
-  renderMedia(); renderSources();
+  renderSources();
 }
 function renderRecent() {
   const hist = loadHistory();
@@ -357,17 +349,95 @@ async function build(topic) {
   }
 }
 
-/* ===== Drawer ===== */
-let lastFocus = null;
+/* ===== Entry modal ===== */
+let lastFocus = null, mediaCtl = null;
 function closeDrawer() {
   deepCtl?.abort(); deepCtl = null;
+  mediaCtl?.abort(); mediaCtl = null;
   if ($("#drawer").hidden) return;
   $("#drawer").hidden = true; $("#scrim").hidden = true; state.open = null;
+  document.body.classList.remove("modal-open");
   document.querySelectorAll(".entry.open").forEach((el) => el.classList.remove("open"));
   lastFocus?.focus?.();
 }
-function openEntry(li, ei) {
+
+function stageEl(s) {
+  const v = videoOf(s.url);
+  const cap = h("div", { class: "mcap" },
+    h("span", { class: "kind", text: v ? "Video" : "Image" }),
+    h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer", text: s.title || hostOf(s.url) }),
+    h("span", { class: "h", text: [`[${s.id}]`, hostOf(s.url), s.author, s.license].filter(Boolean).join(" · ") }));
+  if (v) return h("figure", { class: "stage" }, h("div", { class: "frame" }, playerEl(s)), cap);
+  const frame = h("div", { class: "frame" });
+  const im = img(s.image, { alt: s.title, onfail: (el) => el.replaceWith(h("span", { class: "noimg", text: "This image couldn't be loaded. Open the source to see it." })) });
+  if (im) { im.addEventListener("click", () => openLightbox(s)); frame.append(im); }
+  return h("figure", { class: "stage" }, frame, cap);
+}
+
+function renderModalMedia(ice, e, box, selectedId, searching) {
+  const items = mediaOf(ice, e);
+  const sel = items.find((s) => s.id === selectedId) || items[0];
+  box.dataset.sel = sel ? String(sel.id) : "";
+  const kids = [];
+  if (sel) kids.push(stageEl(sel));
+  else kids.push(h("div", { class: "stage empty" }, h("div", { class: "frame" },
+    h("span", { class: "big-letter", text: (e.term.match(/[\p{L}\p{N}]/u) || ["·"])[0].toUpperCase() }),
+    h("span", { class: "noimg", text: searching ? "Looking for images and video…" : "No images or video found for this entry." }))));
+  if (items.length > 1 || searching) {
+    kids.push(h("div", { class: "strip", role: "list", "aria-label": "All media for this entry" },
+      items.map((s) => {
+        const b = h("button", { type: "button", role: "listitem", "aria-pressed": String(s === sel), title: s.title,
+          "aria-label": `${videoOf(s.url) ? "Video" : "Image"}: ${s.title}`,
+          onclick: () => renderModalMedia(ice, e, box, s.id, searching) });
+        const im = img(thumbOf(s), { alt: "", onfail: (el) => el.replaceWith(h("span", { class: "noimg", text: hostOf(s.url) })) });
+        if (im) b.append(im);
+        if (videoOf(s.url)) b.append(h("span", { class: "vid" }, svg("play")));
+        return b;
+      }),
+      searching ? h("span", { class: "strip-busy", text: "Searching…" }) : null));
+  }
+  box.replaceChildren(...kids);
+}
+
+/* First open of an entry with no video: look for video and Commons pictures of it. */
+async function enrichEntry(ice, e, li, ei, box) {
+  if (ice.example || e.mediaSearched || !canDive() || mediaOf(ice, e).some((s) => videoOf(s.url))) return;
+  mediaCtl?.abort();
+  const ctl = mediaCtl = new AbortController();
+  renderModalMedia(ice, e, box, null, true);
+  try {
+    const res = await fetch("/api/media", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ topic: ice.title, term: e.term }), signal: ctl.signal });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.error?.message || "Media search failed.");
+    e.media = e.media || [];
+    for (const it of data.items || []) {
+      if (!safeUrl(it.url)) continue;
+      let s = ice.sources.find((x) => x.url === it.url);
+      if (!s) {
+        s = { id: Math.max(0, ...ice.sources.map((x) => x.id)) + 1, title: it.title || hostOf(it.url), url: it.url, author: it.author || "",
+          date: it.date || "", image: it.image || "", favicon: it.favicon || "", excerpt: it.excerpt || "", license: it.license || "", commons: !!it.commons };
+        ice.sources.push(s);
+      }
+      if (isMedia(s) && !e.media.includes(s.id)) e.media.push(s.id);
+    }
+    e.mediaSearched = true;
+    if (!ice.example) saveHistory(ice);
+    renderBand(li); renderHero(); renderSeabed(true);
+  } catch (err) {
+    if (ctl.signal.aborted) return;
+    e.mediaSearched = true;
+  } finally {
+    if (mediaCtl === ctl) mediaCtl = null;
+  }
+  if (state.open?.li === li && state.open?.ei === ei && state.ice === ice) {
+    renderModalMedia(ice, e, box, Number(box.dataset.sel) || null, false);
+  }
+}
+
+function openEntry(li, ei, mediaId) {
   deepCtl?.abort(); deepCtl = null;
+  mediaCtl?.abort(); mediaCtl = null;
   const ice = state.ice; const e = ice.layers[li].entries[ei]; const z = ZONES[li];
   state.open = { li, ei };
   if ($("#drawer").hidden) lastFocus = document.activeElement;
@@ -375,18 +445,9 @@ function openEntry(li, ei) {
   document.querySelectorAll(".entry.open").forEach((el) => el.classList.remove("open"));
   document.querySelectorAll(`#lv-${z.key} .entry`)[ei]?.classList.add("open");
   const srcs = e.sources.map((id) => sourceById(ice, id)).filter(Boolean);
-  const vid = srcs.find((s) => videoOf(s.url));
-  const pic = srcs.find((s) => !videoOf(s.url) && s.image);
 
-  let hero = null;
-  if (vid) hero = h("div", {}, playerEl(vid));
-  else if (pic) {
-    const im = img(pic.image, { alt: pic.title, onfail: () => hero?.remove() });
-    if (im) {
-      im.addEventListener("click", () => openLightbox(pic));
-      hero = h("figure", { class: "dhero" }, im, h("figcaption", { text: `[${pic.id}] ${pic.commons ? [pic.author, pic.license].filter(Boolean).join(" · ") : hostOf(pic.url)}` }));
-    }
-  }
+  const mediaBox = h("div", { class: "mmedia" });
+  renderModalMedia(ice, e, mediaBox, mediaId, false);
 
   const deepBox = h("div", { class: "deep", hidden: !e.deep || null });
   const holesBox = h("div", { class: "holes" });
@@ -400,12 +461,14 @@ function openEntry(li, ei) {
   digBtn.onclick = () => digDeeper(ice, e, { deepBox, holesBox, deepErr, digBtn, stopBtn });
   stopBtn.onclick = () => deepCtl?.abort();
 
-  $("#dBody").replaceChildren(...[
-    hero,
+  const text = h("div", { class: "mtext" }, ...[
     h("h2", { id: "dTitle", text: e.term }),
     h("span", { class: "conf " + e.confidence, text: e.confidence }),
     h("p", { class: "lead", text: e.summary }),
     e.detail ? h("p", { class: "detail", text: e.detail }) : null,
+    h("div", { class: "actions" }, digBtn, stopBtn, newBtn),
+    !canDive() ? h("div", { class: "err", text: "Dig deeper and new dives need the server's Anthropic and Exa keys. See the README." }) : null,
+    deepErr, deepBox, holesBox,
     h("div", { class: "dsec" }, h("h3", { text: `Sources · ${srcs.length}` }),
       h("ul", { class: "citelist" }, srcs.map((s) => {
         const th = h("span", { class: "cthumb" }); const t = img(thumbOf(s), { alt: "" }); if (t) th.append(t);
@@ -413,12 +476,14 @@ function openEntry(li, ei) {
           h("span", { class: "sid", text: `[${s.id}]` }), th,
           h("span", {}, h("div", { class: "t", text: s.title }), h("div", { class: "x", text: `${hostOf(s.url)}${s.excerpt ? " — " + s.excerpt : ""}` }))));
       }))),
-    h("div", { class: "actions" }, digBtn, stopBtn, newBtn),
-    !canDive() ? h("div", { class: "err", text: "Dig deeper and new dives need the server's Anthropic and Exa keys. See the README." }) : null,
-    deepErr, deepBox, holesBox].filter(Boolean));
+  ].filter(Boolean));
+
+  $("#dBody").replaceChildren(h("div", { class: "mgrid" }, mediaBox, text));
   $("#drawer").hidden = false; $("#scrim").hidden = false;
-  $("#dBody").scrollTop = 0;
+  document.body.classList.add("modal-open");
+  text.scrollTop = 0; $("#dBody").scrollTop = 0;
   $("#dClose").focus();
+  enrichEntry(ice, e, li, ei, mediaBox);
 }
 function renderHoles(box, holes) {
   box.replaceChildren(...((holes || []).length ? [h("div", { class: "dsec", style: "width:100%" }, h("h3", { text: "Rabbit holes" }),
