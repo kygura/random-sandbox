@@ -1,28 +1,7 @@
 import { ZONES as ZONE_TEXT } from "./zones.js";
 import { EXAMPLE } from "./example.js";
 
-/* ===== Zone visuals (geometry + palette per depth) ===== */
-const LOOK = {
-  tip:       { tl: 47, bl: 22, pad: 30, minh: 210, pt: "84px", align: "end",
-               water: "linear-gradient(180deg, #1b2c47 0%, #3a5677 100%)", ice: "linear-gradient(180deg, #ffffff 0%, #dcedf4 100%)",
-               tagbg: "rgba(255,255,255,0.92)", tagfg: "#0c2238", tagline: "rgba(12,34,56,0.18)", strong: "rgba(12,34,56,0.6)", zmuted: "#a9bccc", facet: 0 },
-  waterline: { tl: 22, bl: 13, pad: 16,
-               water: "linear-gradient(180deg, #17608a 0%, #104a6c 100%)", ice: "linear-gradient(180deg, #c6e5ef 0%, #a9d2e0 100%)",
-               tagbg: "rgba(255,255,255,0.86)", tagfg: "#0c2238", tagline: "rgba(12,34,56,0.18)", strong: "rgba(12,34,56,0.6)", zmuted: "#a4c4d6", facet: 0.12 },
-  twilight:  { tl: 13, bl: 7, pad: 10,
-               water: "linear-gradient(180deg, #0e3e5c 0%, #0b2f48 100%)", ice: "linear-gradient(180deg, #7aaec2 0%, #5f94ab 100%)",
-               tagbg: "rgba(5,22,38,0.62)", tagfg: "#eaf5fa", tagline: "rgba(220,240,250,0.2)", strong: "rgba(220,240,250,0.6)", zmuted: "#86a9bf", facet: 0.08 },
-  midnight:  { tl: 7, bl: 3, pad: 6,
-               water: "linear-gradient(180deg, #09273c 0%, #071c2c 100%)", ice: "linear-gradient(180deg, #4a7a92 0%, #3b6880 100%)",
-               tagbg: "rgba(4,16,28,0.62)", tagfg: "#e3f0f7", tagline: "rgba(220,240,250,0.18)", strong: "rgba(220,240,250,0.55)", zmuted: "#7095ab", facet: 0.07 },
-  abyss:     { tl: 3, bl: 8, pad: 8,
-               water: "linear-gradient(180deg, #05141f 0%, #040e17 100%)", ice: "linear-gradient(180deg, #2d5670 0%, #234760 100%)",
-               tagbg: "rgba(2,10,18,0.6)", tagfg: "#dbe9f1", tagline: "rgba(220,240,250,0.16)", strong: "rgba(220,240,250,0.5)", zmuted: "#5b7d92", facet: 0.06 },
-  trench:    { tl: 8, bl: 30, pad: 18, minh: 190,
-               water: "linear-gradient(180deg, #030a11 0%, #02060b 100%)", ice: "linear-gradient(180deg, #1e4058 0%, #142e42 100%)",
-               tagbg: "rgba(1,6,12,0.6)", tagfg: "#d2e2ec", tagline: "rgba(220,240,250,0.16)", strong: "rgba(241,145,145,0.6)", zmuted: "#4f6f84", facet: 0.05 },
-};
-const ZONES = ZONE_TEXT.map((z) => ({ ...z, ...LOOK[z.key] }));
+const ZONES = ZONE_TEXT;
 
 /* ===== Helpers ===== */
 const $ = (s) => document.querySelector(s);
@@ -147,55 +126,49 @@ function renderHero() {
       ice.example ? h("span", { class: "tagx", text: "Example · pre-built from real sources" }) : null,
       ice.createdAt ? h("span", { text: new Date(ice.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) }) : null),
     h("h1", { text: ice.title || ice.topic }),
-    ice.summary ? h("p", { text: ice.summary }) : h("p", { text: "Planning the descent…" }),
+    ice.summary ? h("p", { text: ice.summary }) : h("p", { text: "Planning the search…" }),
     h("div", { class: "readouts" },
       h("span", {}, h("b", { text: String(entries) }), " entries"),
       h("span", {}, h("b", { text: String(ice.sources.length) }), " sources"),
       h("span", {}, h("b", { text: String(media) }), " with images or video"),
-      h("span", {}, h("b", { text: `${done}/6` }), " layers charted")));
+      h("span", {}, h("b", { text: `${done}/6` }), " levels charted")));
 }
 
-function bandEl(i) {
+function levelEl(i) {
   const z = ZONES[i]; const layer = state.ice.layers[i];
-  const style = [
-    `--water:${z.water}`, `--icefill:${z.ice}`, `--tl:${z.tl}%`, `--bl:${z.bl}%`, `--pad:${z.pad}%`,
-    `--tagbg:${z.tagbg}`, `--tagfg:${z.tagfg}`, `--tagline:${z.tagline}`, `--tagline-strong:${z.strong}`, `--zmuted:${z.zmuted}`,
-    `--facet:${z.facet}`, z.minh ? `--minh:${z.minh}px` : "", z.pt ? `--pt:${z.pt}` : "", z.align ? `--align:flex-${z.align}` : "",
-  ].filter(Boolean).join(";");
-
+  const open = state.open && state.open.li === i ? state.open.ei : -1;
   let inner;
   if (layer.status === "done" && layer.entries.length) {
     inner = layer.entries.map((e, k) => h("button", {
-      class: "tag " + (e.confidence || "established"), type: "button",
-      "aria-label": `${e.term}, ${e.confidence || "established"}, ${e.sources.length} sources`,
+      class: "entry " + (e.confidence || "established") + (k === open ? " open" : ""), type: "button",
+      "aria-label": `${e.term}. ${e.confidence || "established"}, ${e.sources.length} source${e.sources.length === 1 ? "" : "s"}`,
       onclick: () => openEntry(i, k),
-    }, e.term, h("span", { class: "n", text: e.sources.length ? `${e.sources.length}` : "" })));
+    }, e.term, e.sources.length ? h("sup", { text: String(e.sources.length) }) : null));
   } else if (["pending", "searching", "charting"].includes(layer.status)) {
-    inner = [100, 140, 86, 120].map((w) => h("span", { class: "skel", style: `width:${w}px` }));
+    inner = [5, 8, 4, 7].map((w) => h("span", { class: "skel", style: `width:${w}em` }));
   } else if (layer.status === "error") {
-    inner = [h("span", { class: "note", text: layer.error || "This layer couldn't be charted." })];
+    inner = [h("span", { class: "note bad", text: layer.error || "This level couldn't be charted." })];
   } else {
-    inner = [h("span", { class: "note", text: "Nothing reliable surfaced at this depth." })];
+    inner = [h("span", { class: "note", text: "Nothing reliable surfaced at this level." })];
   }
-  const statusText = { pending: "waiting", searching: "searching the web", charting: "charting", done: `${layer.entries.length} entries`, error: "failed", empty: "no results" }[layer.status] || "";
-  const cited = new Set(layer.entries.flatMap((e) => e.sources)).size;
   const busy = layer.status === "searching" || layer.status === "charting";
+  const cited = new Set(layer.entries.flatMap((e) => e.sources)).size;
+  const count = {
+    pending: "waiting", searching: "searching the web", charting: "reading results",
+    done: `${layer.entries.length} entries · ${cited} sources`, error: "failed", empty: "no results",
+  }[layer.status] || "";
 
-  return h("section", { class: "band" + (z.key === "waterline" ? " waterline" : ""), id: "z-" + z.key, style, "aria-label": `${z.name}, ${z.depth}` },
-    z.key === "waterline" ? h("span", { class: "wl-label", text: "WATERLINE" }) : null,
-    h("div", { class: "band-in" },
-      h("div", { class: "meta" },
-        h("span", { class: "depth", text: z.depth }),
-        h("span", { class: "zname", text: z.name }),
-        h("span", { class: "zsci", text: z.sci }),
-        h("span", { class: "who", text: layer.theme || z.who })),
-      h("div", { class: "ice" }, h("div", { class: "tags" }, inner)),
-      h("div", { class: "side" },
-        h("span", { class: "st" + (busy ? " busy" : ""), text: statusText }),
-        layer.status === "done" ? h("span", { text: `${cited} sources cited` }) : null)));
+  return h("section", { class: "level", id: "lv-" + z.key, "data-level": String(z.level), "aria-label": `Level ${z.level}: ${z.name}` },
+    h("div", { class: "level-in" },
+    h("div", { class: "rail" },
+      h("span", { class: "num", text: `${String(z.level).padStart(2, "0")} / 06` }),
+      h("span", { class: "name", text: z.name }),
+      h("span", { class: "theme", text: layer.theme || z.short }),
+      h("span", { class: "count" + (busy ? " busy" : ""), text: count })),
+    h("div", { class: "entries" }, inner)));
 }
-function renderBand(i) { const old = document.getElementById("z-" + ZONES[i].key); const el = bandEl(i); if (old) old.replaceWith(el); else $("#ocean").append(el); }
-function renderOcean() { $("#ocean").replaceChildren(...ZONES.map((_, i) => bandEl(i))); }
+function renderBand(i) { const old = document.getElementById("lv-" + ZONES[i].key); const el = levelEl(i); if (old) old.replaceWith(el); else $("#levels").append(el); }
+function renderOcean() { $("#levels").replaceChildren(...ZONES.map((_, i) => levelEl(i))); }
 
 /* --- Media --- */
 function playerEl(s, { compact = false } = {}) {
@@ -318,7 +291,7 @@ async function build(topic) {
     layers: ZONES.map((z) => ({ key: z.key, status: "pending", entries: [], theme: "" })) };
   state.ice = ice; closeDrawer(); setBusy(true); renderAll();
   prog.total = 1 + 6 * 2; prog.done = 0;
-  setStatus(`Planning the descent into “${topic}”…`, "busy");
+  setStatus(`Planning searches for “${topic}”…`, "busy");
   let finished = false;
   try {
     for await (const ev of await postStream("/api/dive", { topic, depth: $("#tier").value }, ctl.signal)) {
@@ -341,7 +314,7 @@ async function build(topic) {
         setProgress(); renderBand(ev.index); renderHero();
       } else if (ev.type === "done") {
         finished = true;
-        setStatus(ev.charted ? `Charted ${ev.charted} of 6 layers from ${ev.sources} sources. Open any entry to see its sources.` : "No layer could be charted. Try a more specific topic.", ev.charted ? null : "err");
+        setStatus(ev.charted ? `Charted ${ev.charted} of 6 levels from ${ev.sources} sources. Open any entry to see where it came from.` : "No level could be charted. Try a more specific topic.", ev.charted ? null : "err");
       } else if (ev.type === "error") {
         finished = true;
         setStatus(ev.error?.message || "The dive failed.", "err");
@@ -352,7 +325,7 @@ async function build(topic) {
     if (ctl.signal.aborted || e?.name === "AbortError") setStatus("Dive stopped. Charted layers are kept.");
     else setStatus(e?.message || "Couldn't reach the server. Is it still running?", "err");
   } finally {
-    ice.layers.forEach((l, i) => { if (["pending", "searching", "charting"].includes(l.status)) { l.status = "error"; l.error = "Stopped before this depth was reached."; renderBand(i); } });
+    ice.layers.forEach((l, i) => { if (["pending", "searching", "charting"].includes(l.status)) { l.status = "error"; l.error = "Stopped before this level was reached."; renderBand(i); } });
     if (buildCtl === ctl) buildCtl = null;
     setBusy(false); renderSeabed();
     if (ice.layers.some((l) => l.entries.length)) saveHistory(ice);
@@ -365,6 +338,7 @@ function closeDrawer() {
   deepCtl?.abort(); deepCtl = null;
   if ($("#drawer").hidden) return;
   $("#drawer").hidden = true; $("#scrim").hidden = true; state.open = null;
+  document.querySelectorAll(".entry.open").forEach((el) => el.classList.remove("open"));
   lastFocus?.focus?.();
 }
 function openEntry(li, ei) {
@@ -372,7 +346,9 @@ function openEntry(li, ei) {
   const ice = state.ice; const e = ice.layers[li].entries[ei]; const z = ZONES[li];
   state.open = { li, ei };
   if ($("#drawer").hidden) lastFocus = document.activeElement;
-  $("#dZone").replaceChildren(h("span", { style: "color:var(--flare)", text: z.depth }), h("span", { text: z.name }));
+  $("#dZone").replaceChildren(h("span", { text: `Level ${z.level} of 6` }), h("b", { text: z.name }));
+  document.querySelectorAll(".entry.open").forEach((el) => el.classList.remove("open"));
+  document.querySelectorAll(`#lv-${z.key} .entry`)[ei]?.classList.add("open");
   const srcs = e.sources.map((id) => sourceById(ice, id)).filter(Boolean);
   const vid = srcs.find((s) => videoOf(s.url));
   const pic = srcs.find((s) => !videoOf(s.url) && s.image);

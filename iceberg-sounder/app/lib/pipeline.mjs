@@ -37,7 +37,7 @@ export function chartPrompt(title, zone, theme, otherThemes, local) {
     `[${tag}] ${r.title || "(untitled)"} — ${r.url}${r.date ? " (" + r.date.slice(0, 10) + ")" : ""}\n${(r.text || "").slice(0, 900)}`).join("\n\n");
   return `You are filling one layer of an iceberg research chart.
 Topic: ${title}
-This layer: ${zone.name} (${zone.sci}, ${zone.depth}) — ${zone.brief}.
+This layer: ${zone.name} (level ${zone.level} of 6) — ${zone.brief}.
 Layer theme: ${theme || zone.brief}
 The other layers cover: ${otherThemes}
 
@@ -99,7 +99,7 @@ export async function runDive({ topic, depth, emit, signal, deps }) {
   };
   const pub = ({ key, ...s }) => s;
 
-  emit({ type: "status", text: `Planning the descent into “${topic}”…` });
+  emit({ type: "status", text: `Planning searches for “${topic}”…` });
   let plan;
   try {
     plan = await claude.structured(planPrompt(topic), PlanSchema, { depth, signal });
@@ -115,7 +115,7 @@ export async function runDive({ topic, depth, emit, signal, deps }) {
     return { theme: str(p.theme, 200), queries: qs.length ? qs : [`${topic}: ${z.brief}`] };
   });
   emit({ type: "plan", title, summary: str(plan.summary, 600), themes: plans.map((p) => p.theme) });
-  emit({ type: "status", text: "Sounding six layers on the live web…" });
+  emit({ type: "status", text: "Searching the web for all six levels…" });
 
   const exaQ = limiter(4), claudeQ = limiter(3);
   // A fatal error (bad key, no credits) cancels everything else in this dive.

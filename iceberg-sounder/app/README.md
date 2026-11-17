@@ -1,6 +1,6 @@
 # Iceberg Sounder (standalone)
 
-Name a research topic and get an iceberg chart: six depth layers from common knowledge down to fringe claims, built from live web search, with every entry citing its sources. Unlike the claude.ai artifact version, this one renders media inline:
+Name a research topic and get an iceberg chart: six levels from common knowledge down to contested claims, built from live web search, with every entry citing its sources. Unlike the claude.ai artifact version, this one renders media inline:
 
 - **Videos** play on the page through YouTube's privacy-enhanced player or Vimeo.
 - **Images** come from each page's own preview image and from Wikimedia Commons (author and license shown), in a gallery with a full-size viewer.
@@ -20,9 +20,9 @@ The page opens on a pre-built example (the Voynich manuscript), so you can look 
 
 ## How a dive works
 
-1. Claude (`claude-opus-5-5`) plans three search queries for each layer, plus searches for videos, image-rich pages, papers and Commons images.
+1. Claude (`claude-opus-5-5`) plans three search queries for each level, plus searches for videos, image-rich pages, papers and Commons images.
 2. The server runs them through Exa and streams results to the browser as they arrive.
-3. Claude charts each layer from that layer's results only, using structured output. Entries that cite nothing are dropped.
+3. Claude charts each level from that level's results only, using structured output. Entries that cite nothing are dropped.
 4. **Dig deeper** on an entry fetches the cited pages in full and streams a longer write-up with citations and follow-up topics.
 
 The Quick / Thorough / Deepest setting maps to Claude's `low` / `medium` / `high` effort. Requests use the API's server-side refusal fallback, so a declined request is retried on a fallback model instead of failing.

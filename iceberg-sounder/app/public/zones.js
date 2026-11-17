@@ -1,15 +1,16 @@
-// Shared by the server (prompts) and the browser (drawing). Depth zones are fixed.
+// Shared by the server (prompts) and the browser (drawing). Levels are fixed,
+// ordered from what everyone knows down to what almost nobody does.
 export const ZONES = [
-  { key: "tip", name: "The Tip", depth: "+30 m", sci: "Above water", who: "What nearly everyone knows",
+  { key: "tip", level: 1, name: "Everyone knows", short: "Common knowledge",
     brief: "common knowledge most people have heard" },
-  { key: "waterline", name: "Waterline", depth: "0 m", sci: "Epipelagic", who: "What a curious newcomer learns",
+  { key: "waterline", level: 2, name: "Newcomers learn", short: "An afternoon's reading",
     brief: "what a curious newcomer learns in an afternoon" },
-  { key: "twilight", name: "Twilight Zone", depth: "−200 m", sci: "Mesopelagic", who: "Enthusiasts and fans",
+  { key: "twilight", level: 3, name: "Enthusiasts know", short: "Names, dates, terms",
     brief: "enthusiast knowledge: named people, dates, technical terms" },
-  { key: "midnight", name: "Midnight Zone", depth: "−1,000 m", sci: "Bathypelagic", who: "Specialists and scholars",
+  { key: "midnight", level: 4, name: "Specialists know", short: "Scholarly detail",
     brief: "specialist and scholarly detail" },
-  { key: "abyss", name: "The Abyss", depth: "−4,000 m", sci: "Abyssopelagic", who: "Archives and primary sources",
+  { key: "abyss", level: 5, name: "In the archives", short: "Primary sources",
     brief: "archival, primary-source, rarely discussed specifics" },
-  { key: "trench", name: "The Trench", depth: "−6,000 m", sci: "Hadal", who: "Fringe, contested, unresolved",
+  { key: "trench", level: 6, name: "Contested", short: "Fringe and unresolved",
     brief: "fringe theories, disputed claims and unresolved questions" },
 ];
