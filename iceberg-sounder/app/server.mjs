@@ -1,4 +1,5 @@
 import http from "node:http";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -24,8 +25,8 @@ const CSP = [
   "form-action 'self'",
 ].join("; ");
 
-function send(res, status, body, type = "application/json; charset=utf-8") {
-  res.writeHead(status, { "content-type": type, "content-security-policy": CSP, "x-content-type-options": "nosniff", "referrer-policy": "no-referrer" });
+function send(res, status, body, type = "application/json; charset=utf-8", extra = {}) {
+  res.writeHead(status, { "content-type": type, "content-security-policy": CSP, "x-content-type-options": "nosniff", "referrer-policy": "no-referrer", ...extra });
   res.end(typeof body === "string" || Buffer.isBuffer(body) ? body : JSON.stringify(body));
 }
 
@@ -62,6 +63,23 @@ const clean = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]/g,
    stored or logged. Without them the server's own keys are used, but on Vercel
    only when ALLOW_PUBLIC=1, so a public URL doesn't spend the owner's credits. */
 const serverKeysOpen = (env) => !env.VERCEL || env.ALLOW_PUBLIC === "1";
+
+/* Owner mode: with OWNER_SECRET set, POST /api/owner with that secret marks
+   this browser with an HttpOnly cookie, and its searches use the server's keys. */
+const OWNER_COOKIE = "ice_owner";
+const ownerToken = (secret) => createHmac("sha256", secret).update("iceberg-owner-v1").digest("base64url");
+const sameText = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && timingSafeEqual(x, y); };
+function cookieOf(req, name) {
+  for (const part of String(req.headers.cookie || "").split(";")) {
+    const i = part.indexOf("="); if (i < 0) continue;
+    if (part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
+  }
+  return "";
+}
+function ownerCookie(value, req, env, maxAge) {
+  const secure = env.VERCEL || req.headers["x-forwarded-proto"] === "https" ? "; Secure" : "";
+  return `${OWNER_COOKIE}=${value}; Path=/; Max-Age=${maxAge}; HttpOnly; SameSite=Lax${secure}`;
+}
 const KEY_RE = /^[\x21-\x7e]{8,300}$/;
 const USER_KEY_MESSAGES = {
   claude_auth: "Anthropic rejected the API key you entered. Check it under Keys.",
@@ -80,14 +98,21 @@ export function createHandler(deps, {
 } = {}) {
   let running = 0;
   const open = serverKeysOpen(env);
-  const serverClaude = open && deps.claude.configured, serverExa = open && deps.exa.configured;
+  const secret = String(env.OWNER_SECRET || "");
+  const isOwner = (req) => secret.length >= 16 && sameText(cookieOf(req, OWNER_COOKIE), ownerToken(secret));
+  /* Whether the server's own keys serve this request. */
+  const serverFor = (req) => {
+    const ok = open || isOwner(req);
+    return { claude: ok && deps.claude.configured, exa: ok && deps.exa.configured };
+  };
 
   /* The deps for one request, or an error to send back. */
   function depsFor(req) {
     const ak = keyHeader(req, "x-anthropic-key"), ek = keyHeader(req, "x-exa-key");
     if ((ak && !KEY_RE.test(ak)) || (ek && !KEY_RE.test(ek))) return { status: 400, error: { code: "bad_key", message: "That doesn't look like an API key. Check what you pasted under Keys." } };
-    const claude = ak ? makeClaude(ak) : serverClaude ? deps.claude : null;
-    const exa = ek ? makeExa(ek) : serverExa ? deps.exa : null;
+    const srv = serverFor(req);
+    const claude = ak ? makeClaude(ak) : srv.claude ? deps.claude : null;
+    const exa = ek ? makeExa(ek) : srv.exa ? deps.exa : null;
     const missing = [!claude && "Anthropic", !exa && "Exa"].filter(Boolean);
     if (missing.length) return { status: 401, error: { code: "keys_needed", missing, message: `Add your ${missing.join(" and ")} API key${missing.length > 1 ? "s" : ""} under Keys to search.` } };
     return { deps: { ...deps, claude, exa }, userKeys: Boolean(ak || ek) };
@@ -97,7 +122,18 @@ export function createHandler(deps, {
     const url = new URL(req.url, "http://localhost");
     try {
       if (req.method === "GET" && url.pathname === "/api/health") {
-        return send(res, 200, { model: modelId(), claude: serverClaude, exa: serverExa, commons: Boolean(deps.commons?.configured), byok: true });
+        const srv = serverFor(req);
+        return send(res, 200, { model: modelId(), claude: srv.claude, exa: srv.exa, commons: Boolean(deps.commons?.configured), byok: true, owner: isOwner(req) }, undefined, { "cache-control": "no-store" });
+      }
+
+      if (url.pathname === "/api/owner" && req.method === "POST") {
+        const body = await readJson(req, 4096);
+        if (secret.length < 16 || typeof body.secret !== "string" || !sameText(body.secret.trim(), secret))
+          return send(res, 401, { error: { code: "owner_denied", message: "That owner link isn't valid." } });
+        return send(res, 200, { owner: true }, undefined, { "set-cookie": ownerCookie(ownerToken(secret), req, env, 60 * 60 * 24 * 400), "cache-control": "no-store" });
+      }
+      if (url.pathname === "/api/owner" && req.method === "DELETE") {
+        return send(res, 200, { owner: false }, undefined, { "set-cookie": ownerCookie("", req, env, 0), "cache-control": "no-store" });
       }
 
       let ctx = null;

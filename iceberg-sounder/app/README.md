@@ -47,11 +47,12 @@ The repo deploys as-is: `public/` is served statically and each file in `api/` i
 
 | Variable | |
 |---|---|
-| `ANTHROPIC_API_KEY`, `EXA_API_KEY` | the server's own keys, used only together with `ALLOW_PUBLIC=1` |
+| `ANTHROPIC_API_KEY`, `EXA_API_KEY` | the server's own keys, used for owner-mode browsers or with `ALLOW_PUBLIC=1` |
+| `OWNER_SECRET` | 16+ characters. Open `https://your-site/#owner=SECRET` once per browser and that browser searches on the server's keys from then on |
 | `ALLOW_PUBLIC` | `1` lets visitors without keys search on the server's keys, at your cost |
 | `WIKIMEDIA_CONTACT` | an email or URL; turns on Commons images |
 
-On Vercel the server's keys are never used unless `ALLOW_PUBLIC=1`, so a public URL can't spend your credits by accident. To search on your own account there, paste your keys into the Keys panel like any visitor.
+On Vercel the server's keys are never used unless `ALLOW_PUBLIC=1`, so a public URL can't spend your credits by accident. For yourself, set `OWNER_SECRET` and open the owner link once on each browser you use: an HttpOnly cookie (an HMAC of the secret, not the secret itself) then marks that browser, and the secret travels in the URL fragment so it never reaches request logs. The Keys panel has a link to leave owner mode.
 
 ## Layout
 

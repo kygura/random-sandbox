@@ -134,3 +134,26 @@ test("handler accepts a body the runtime already parsed", async () => {
   assert.equal(out.status, 200);
   assert.ok(JSON.parse(out.body).items.length);
 });
+
+test("owner link: the secret sets a cookie that unlocks the server's keys on Vercel", async () => {
+  const env = { VERCEL: "1", OWNER_SECRET: "owner-secret-0123456789" };
+  await withApp(env, async (b) => {
+    assert.equal((await (await fetch(b + "/api/health")).json()).claude, false);
+    assert.equal((await post(b + "/api/owner", { secret: "wrong-secret-000000000" })).status, 401);
+    const r = await post(b + "/api/owner", { secret: env.OWNER_SECRET });
+    assert.equal(r.status, 200);
+    const cookie = r.headers.get("set-cookie");
+    assert.match(cookie, /^ice_owner=[\w-]+; Path=\/; Max-Age=\d+; HttpOnly; SameSite=Lax; Secure$/);
+    assert.doesNotMatch(cookie, /owner-secret/, "the cookie holds a derived token, not the secret");
+    const jar = { cookie: cookie.split(";")[0] };
+    const h = await (await fetch(b + "/api/health", { headers: jar })).json();
+    assert.equal(h.owner, true); assert.equal(h.claude, true);
+    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" }, jar)).status, 200);
+    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" }, { cookie: "ice_owner=forged" })).status, 401);
+    const out = await fetch(b + "/api/owner", { method: "DELETE", headers: jar });
+    assert.match(out.headers.get("set-cookie"), /Max-Age=0/);
+  });
+  await withApp({ VERCEL: "1" }, async (b) => {
+    assert.equal((await post(b + "/api/owner", { secret: "anything-at-all-123" })).status, 401, "no OWNER_SECRET, no owner mode");
+  });
+});

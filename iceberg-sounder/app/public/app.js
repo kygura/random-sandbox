@@ -116,7 +116,7 @@ function saveHistory(ice) {
   renderRecent();
 }
 const state = { ice: null, open: null, busy: false };
-const server = { ok: false, claude: false, exa: false, commons: false };
+const server = { ok: false, claude: false, exa: false, commons: false, owner: false };
 let buildCtl = null, deepCtl = null;
 const canDive = () => server.ok && (!!userKeys.anthropic || server.claude) && (!!userKeys.exa || server.exa);
 const missingKeys = () => [!userKeys.anthropic && !server.claude && "Anthropic", !userKeys.exa && !server.exa && "Exa"].filter(Boolean);
@@ -720,7 +720,10 @@ function openKeys() { const d = $("#keys"); d.open = true; setTimeout(() => (use
 function renderKeys(note = "") {
   $("#kAnthropic").value = userKeys.anthropic; $("#kExa").value = userKeys.exa;
   const own = server.claude && server.exa;
-  $("#keysIntro").textContent = own
+  $("#ownerOut").hidden = !server.owner;
+  $("#keysIntro").textContent = server.owner
+    ? "Owner mode is on for this browser, so searches use the site's keys. Keys you add here would be used instead."
+    : own
     ? "This site has its own keys, so yours are optional. If you add them, searches run on your accounts instead. Keys stay in this browser and the server doesn't store them."
     : "Searches run on your own Anthropic and Exa accounts. Your keys stay in this browser and go to this site's server with each search, which passes them on and doesn't store them.";
   $("#keysDot").className = "kdot" + (canDive() ? " on" : "");
@@ -748,12 +751,35 @@ $("#kForget").addEventListener("click", () => {
 });
 document.addEventListener("click", (ev) => { const d = $("#keys"); if (d.open && !d.contains(ev.target)) d.open = false; });
 try { localStorage.removeItem("iceberg-sounder.access"); } catch {}
+$("#ownerOut").addEventListener("click", async () => {
+  await fetch("/api/owner", { method: "DELETE" }).catch(() => {});
+  await checkHealth(); renderKeys("Owner mode is off for this browser.");
+});
 
 /* ===== Boot ===== */
 renderAll();
 setStatus("Checking the server…");
 $("#diveBtn").disabled = true;
-fetch("/api/health").then((r) => r.json()).then((hl) => {
-  Object.assign(server, { ok: true, claude: !!hl.claude, exa: !!hl.exa, commons: !!hl.commons });
-  renderKeys(); refreshReady();
-}).catch(() => setStatus("Couldn't reach the server. Start it with npm start.", "err"));
+/* An owner link (/#owner=SECRET) turns on owner mode for this browser. The
+   secret is in the fragment so it never reaches request logs. */
+async function claimOwner() {
+  const m = location.hash.match(/^#owner=(.+)$/);
+  if (!m) return null;
+  history.replaceState(null, "", location.pathname + location.search);
+  const r = await fetch("/api/owner", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ secret: decodeURIComponent(m[1]) }) }).catch(() => null);
+  return !!r?.ok;
+}
+function checkHealth() {
+  return fetch("/api/health", { cache: "no-store" }).then((r) => r.json()).then((hl) => {
+    Object.assign(server, { ok: true, claude: !!hl.claude, exa: !!hl.exa, commons: !!hl.commons, owner: !!hl.owner });
+    renderKeys(); refreshReady();
+  }).catch(() => setStatus("Couldn't reach the server. Start it with npm start.", "err"));
+}
+async function bootOwner() {
+  const claimed = await claimOwner();
+  await checkHealth();
+  if (claimed === true && server.owner) setStatus("Owner mode is on: this browser now searches with the site's keys.");
+  else if (claimed === false) setStatus("That owner link isn't valid.", "err");
+}
+bootOwner();
+window.addEventListener("hashchange", () => { if (location.hash.startsWith("#owner=")) bootOwner(); });
