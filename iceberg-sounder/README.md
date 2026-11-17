@@ -16,3 +16,7 @@ Icebergs are saved in the viewer's browser. The page opens with a pre-built exam
 ## Limits
 
 Artifacts can't load images or embeds from other sites, so images and videos appear as link cards that open at their source.
+
+## Standalone version
+
+`app/` is a self-hosted version that renders images and plays videos inline. It runs on your own Anthropic and Exa keys. See [app/README.md](app/README.md).

@@ -1,0 +1,16 @@
+{
+  "name": "iceberg-sounder",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Iceberg research charts from live web search, with images and videos rendered inline.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.9.0",
+    "zod": "^3.25.76"
+  }
+}

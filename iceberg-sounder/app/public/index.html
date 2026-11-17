@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Iceberg Sounder</title>
+<meta name="description" content="Name a research topic and chart it as an iceberg, from common knowledge down to the fringe, with every entry traced to its sources.">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="/styles.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<header class="sky">
+  <div class="wrap console">
+    <div class="brand"><b>Iceberg Sounder</b><span>Name a topic · sound its depths · every claim traced</span></div>
+    <form class="dive" id="diveForm" autocomplete="off">
+      <div class="field">
+        <label for="topic">Research topic</label>
+        <input id="topic" name="topic" maxlength="160" placeholder="e.g. the Tunguska event, Ithkuil, the history of the QWERTY layout" required>
+      </div>
+      <div class="tier">
+        <select id="tier" aria-label="How hard Claude thinks">
+          <option value="quick">Quick</option>
+          <option value="thorough" selected>Thorough</option>
+          <option value="deep">Deepest</option>
+        </select>
+      </div>
+      <button class="btn-dive" id="diveBtn" type="submit">Dive</button>
+      <button class="btn-stop" id="stopBtn" type="button" hidden>Stop</button>
+    </form>
+    <div class="recent" id="recent"></div>
+    <div class="status">
+      <div class="status-line" id="statusLine"></div>
+      <div class="bar" id="bar" hidden><i id="barFill"></i></div>
+    </div>
+  </div>
+  <div class="wrap hero" id="hero"></div>
+</header>
+
+<main class="ocean" id="ocean"></main>
+
+<section class="seabed">
+  <div class="wrap">
+    <div id="mediaWrap">
+      <h2>Recovered media</h2>
+      <p class="sub">Videos, images, papers and archives found while sounding. Every item links back to the page it came from.</p>
+      <div id="media"></div>
+    </div>
+    <h2>Sources</h2>
+    <p class="sub">Every entry on the iceberg points back here. Numbers match the citations on each entry.</p>
+    <ol class="sources" id="sources"></ol>
+    <div class="legend" aria-label="Legend">
+      <span><i></i>Established</span>
+      <span><i class="d"></i>Debated</span>
+      <span><i class="s"></i>Speculative or fringe</span>
+    </div>
+    <div class="how">
+      <div><b>How a dive works.</b> Claude plans three search queries per depth layer. Exa runs them on the live web. Claude then charts each layer using only those results, and every entry cites the pages it came from. Open an entry and choose <b>Dig deeper</b> to have Claude read the cited pages in full.</div>
+      <div>Images come from the pages' own preview images and from Wikimedia Commons, with author and license shown. Videos play here through YouTube's privacy-enhanced player or Vimeo. Your icebergs are kept in this browser.</div>
+    </div>
+  </div>
+</section>
+
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle" hidden>
+  <div class="dhead">
+    <div class="eyebrow" id="dZone"></div>
+    <button class="xbtn" id="dClose" type="button" aria-label="Close">×</button>
+  </div>
+  <div class="dbody" id="dBody"></div>
+</aside>
+
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Image viewer" hidden>
+  <button class="xbtn" id="lbClose" type="button" aria-label="Close image">×</button>
+  <img id="lbImg" alt="">
+  <div class="cap">
+    <div><div class="t" id="lbTitle"></div><div class="h" id="lbMeta"></div></div>
+    <a class="btn" id="lbLink" target="_blank" rel="noopener noreferrer">Open source</a>
+  </div>
+</div>
+</body>
+</html>
