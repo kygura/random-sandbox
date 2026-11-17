@@ -54,6 +54,8 @@ function ndjson(req, res, work) {
 }
 
 const DEPTHS = new Set(["quick", "thorough", "deep"]);
+/* Like clean() but keeps line breaks, for the note under the topic. */
+const cleanNotes = (v, max) => (typeof v === "string" ? v.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").replace(/<\/?notes>/gi, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, max) : "");
 const clean = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max) : "");
 
 /* Paid endpoints (dive, deep, media) spend the operator's API credits. With
@@ -94,10 +96,11 @@ export function createHandler(deps, { maxDives = Number(process.env.MAX_DIVES) |
         const body = await readJson(req);
         const topic = clean(body.topic, 160);
         const depth = DEPTHS.has(body.depth) ? body.depth : "thorough";
+        const notes = cleanNotes(body.notes, 2000);
         if (!topic) return send(res, 400, { error: { code: "bad_request", message: "Name a topic to dive into." } });
         if (running >= maxDives) return send(res, 429, { error: { code: "busy", message: "Too many dives running at once. Try again in a minute." } });
         running++;
-        return ndjson(req, res, (emit, signal) => runDive({ topic, depth, emit, signal, deps })).finally(() => { running--; });
+        return ndjson(req, res, (emit, signal) => runDive({ topic, notes, depth, emit, signal, deps })).finally(() => { running--; });
       }
 
       if (req.method === "POST" && url.pathname === "/api/media") {

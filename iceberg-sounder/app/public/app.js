@@ -132,28 +132,23 @@ function mediaOf(ice, e) {
 }
 
 function renderHero() {
-  const ice = state.ice;
-  if (!ice) {
-    $("#hero").replaceChildren(
-      h("div", { class: "eyebrow" }, h("span", { text: "New iceberg" })),
-      h("h1", { class: "quiet", text: "Name a topic to start." }),
-      h("p", { text: "It gets sorted into six levels, from what everyone knows to what's contested, and every entry links to its sources. Open a saved search or the example from the list above." }));
-    return;
-  }
-  const entries = ice.layers.reduce((n, l) => n + l.entries.length, 0);
+  const ice = state.ice; const hero = $("#hero");
+  renderNoteMeta();
+  if (!ice) { hero.hidden = true; hero.replaceChildren(); return; }
+  hero.hidden = false;
+  const entries = countEntries(ice);
   const done = ice.layers.filter((l) => l.status === "done").length;
   const media = ice.layers.reduce((n, l) => n + l.entries.filter((e) => mediaOf(ice, e).length).length, 0);
-  $("#hero").replaceChildren(
-    h("div", { class: "eyebrow" },
-      h("span", { text: ice.example ? "Example" : "Iceberg" }),
-      ice.createdAt ? h("span", { text: new Date(ice.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) }) : null),
-    h("h1", { text: ice.title || ice.topic }),
-    ice.summary ? h("p", { text: ice.summary }) : h("p", { text: "Planning the search…" }),
+  const named = ice.title && ice.title.toLowerCase() !== String(ice.topic).toLowerCase();
+  hero.replaceChildren(...[
+    named ? h("h2", { text: ice.title }) : null,
+    ice.summary ? h("p", { text: ice.summary })
+      : h("div", { class: "skel-lines", "aria-label": "Planning the search" }, h("span", { class: "skel" }), h("span", { class: "skel" }), h("span", { class: "skel short" })),
     h("div", { class: "readouts" },
       h("span", {}, h("b", { text: String(entries) }), " entries"),
       h("span", {}, h("b", { text: String(ice.sources.length) }), " sources"),
       h("span", {}, h("b", { text: String(media) }), " with images or video"),
-      h("span", {}, h("b", { text: `${done}/6` }), " levels charted")));
+      h("span", {}, h("b", { text: `${done}/6` }), " levels charted"))].filter(Boolean));
 }
 
 /* One image per entry, drawn from its media. Prefer an image no other
@@ -209,7 +204,8 @@ function levelEl(i) {
     h("div", { class: "rail" },
       h("span", { class: "num", text: `${String(z.level).padStart(2, "0")} / 06` }),
       h("span", { class: "name", text: z.name }),
-      h("span", { class: "theme", text: layer.theme || z.short }),
+      !layer.theme && layer.status === "pending" && state.busy ? h("span", { class: "theme" }, h("span", { class: "skel", style: "width:11em" }))
+        : h("span", { class: "theme", text: layer.theme || z.short }),
       h("span", { class: "count" + (busy ? " busy" : ""), text: count })),
     h("div", { class: "entries" }, inner),
     levelMedia(i)));
@@ -335,6 +331,7 @@ function renderRecent() {
   const hist = loadHistory();
   const label = state.ice ? (state.ice.title || state.ice.topic) : "Saved searches";
   const menu = h("div", { class: "saved-menu", role: "menu" },
+    h("button", { class: "saved-new", type: "button", role: "menuitem", onclick: () => { closeSaved(); newNote(); } }, h("span", { text: "+" }), " New search"),
     h("div", { class: "saved-h", text: "Your searches" }),
     hist.length ? h("ul", {}, ...hist.map((x) => savedRow(x, { removable: true })))
       : h("p", { class: "saved-empty", text: "Searches you run are saved here, in this browser." }),
@@ -356,7 +353,119 @@ function renderAll() {
   if (empty) { $("#levels").replaceChildren(); $("#lvnav").replaceChildren(); $("#sources").replaceChildren(); return; }
   renderOcean(); renderSeabed();
 }
-function show(ice) { if (state.busy) return; state.ice = ice; state.allSources = false; closeDrawer(); renderAll(); window.scrollTo({ top: 0 }); }
+function show(ice) {
+  if (state.busy) return;
+  state.ice = ice; state.allSources = false; closeDrawer();
+  if (ice) setNote(ice.topic || ice.title, ice.notes || ""); else { const d = loadDraft(); setNote(d.topic, d.notes); }
+  renderAll(); window.scrollTo({ top: 0 });
+}
+function newNote() { if (state.busy) return; saveDraft({ topic: "", notes: "" }); show(null); $("#topic").focus(); }
+
+/* ===== The note ===== */
+const DKEY = "iceberg-sounder.draft";
+const loadDraft = () => { try { const d = JSON.parse(localStorage.getItem(DKEY) || "{}"); return { topic: String(d.topic || ""), notes: String(d.notes || "") }; } catch { return { topic: "", notes: "" }; } };
+const saveDraft = (d) => { try { localStorage.setItem(DKEY, JSON.stringify(d)); } catch {} };
+const textOf = (el) => el.innerText.replace(/\u00a0/g, " ");
+function getNote() { return { topic: textOf($("#topic")).replace(/\s+/g, " ").trim(), notes: textOf($("#notes")).replace(/\n{3,}/g, "\n\n").trim() }; }
+function setNote(topic, notes) { $("#topic").textContent = topic || ""; $("#notes").textContent = notes || ""; }
+function renderNoteMeta() {
+  const ice = state.ice; const el = $("#noteMeta");
+  if (!ice) { el.textContent = "New search"; return; }
+  const n = getNote();
+  const edited = !state.busy && (n.topic !== String(ice.topic || ice.title).trim() || n.notes !== String(ice.notes || "").trim());
+  el.replaceChildren(
+    h("span", { text: ice.example ? "Example" : state.busy ? "Researching…" : "Saved " + fmtDate(ice.createdAt || Date.now()) }),
+    ...(edited ? [h("span", { class: "edited", text: " · edited, run it again to research the new version" })] : []));
+}
+(function setupNote() {
+  const title = $("#topic"), body = $("#notes");
+  for (const el of [title, body]) {
+    if (el.contentEditable !== "plaintext-only") el.contentEditable = "true";
+    el.addEventListener("paste", (ev) => {
+      ev.preventDefault();
+      let t = ev.clipboardData?.getData("text/plain") || "";
+      if (el === title) t = t.replace(/\s+/g, " ");
+      document.execCommand("insertText", false, t);
+    });
+    el.addEventListener("input", () => {
+      if (!el.textContent.trim() && !el.querySelector("img")) el.replaceChildren();
+      if (!state.ice) saveDraft(getNote());
+      renderNoteMeta();
+      if (el === body) slashCheck();
+    });
+  }
+  title.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && !(ev.metaKey || ev.ctrlKey)) {
+      ev.preventDefault(); body.focus();
+      const r = document.createRange(); r.selectNodeContents(body); r.collapse(true);
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    }
+  });
+  title.addEventListener("input", () => { if (textOf(title).length > 160) title.textContent = textOf(title).slice(0, 160); });
+  body.addEventListener("keydown", (ev) => {
+    if (!$("#slash").hidden) slashKey(ev);
+    else if (ev.key === "Backspace" && !textOf(body).length) { ev.preventDefault(); placeCaretEnd(title); }
+  });
+  $("#note").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); closeSlash(); $("#diveBtn").click(); }
+  });
+  body.addEventListener("blur", () => setTimeout(closeSlash, 120));
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  $("#kbdHint").replaceChildren(h("kbd", { text: mac ? "⌘" : "Ctrl" }), h("kbd", { text: "↵" }));
+  const d = loadDraft(); setNote(d.topic, d.notes);
+})();
+function placeCaretEnd(el) {
+  el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+}
+
+/* Slash commands, typed at the start of a line in the notes. */
+const SLASH = [
+  { key: "research", t: "Research", d: "Start the search now", k: "↵", run: () => $("#diveBtn").click() },
+  { key: "quick", t: "Quick", d: "Fast, lighter reading", run: () => { $("#tier").value = "quick"; } },
+  { key: "thorough", t: "Thorough", d: "The default", run: () => { $("#tier").value = "thorough"; } },
+  { key: "deepest", t: "Deepest", d: "Slowest, most careful", run: () => { $("#tier").value = "deep"; } },
+  { key: "example", t: "Open the example", d: "The Voynich manuscript", run: () => show(EXAMPLE) },
+  { key: "new", t: "New search", d: "Clear this page", run: () => newNote() },
+];
+const slash = { open: false, node: null, start: 0, end: 0, items: [], sel: 0 };
+function slashCheck() {
+  const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return closeSlash();
+  const r = sel.getRangeAt(0); const node = r.startContainer;
+  if (node.nodeType !== 3 || !$("#notes").contains(node)) return closeSlash();
+  const before = node.data.slice(0, r.startOffset);
+  const m = before.match(/(?:^|\n)\/([a-z]*)$/i);
+  if (!m) return closeSlash();
+  const q = m[1].toLowerCase();
+  slash.node = node; slash.end = r.startOffset; slash.start = r.startOffset - q.length - 1;
+  slash.items = SLASH.filter((c) => c.key.startsWith(q) || c.t.toLowerCase().includes(q));
+  slash.sel = 0; slash.open = true;
+  const box = $("#slash"), note = $("#note").getBoundingClientRect();
+  const rect = r.getClientRects()[0] || r.startContainer.parentElement.getBoundingClientRect();
+  box.style.top = (rect.bottom - note.top + 6) + "px";
+  box.style.left = Math.max(0, Math.min(rect.left - note.left, note.width - 268)) + "px";
+  renderSlash(); box.hidden = false;
+}
+function renderSlash() {
+  const box = $("#slash");
+  box.replaceChildren(...(slash.items.length ? slash.items.map((c, i) => h("button", {
+    type: "button", role: "option", "aria-selected": i === slash.sel ? "true" : "false",
+    onmousedown: (ev) => { ev.preventDefault(); runSlash(i); },
+  }, h("span", { class: "t", text: c.t }), h("span", { class: "d", text: c.d }), c.k ? h("span", { class: "k", text: c.k }) : null)) : [h("div", { class: "none", text: "No command by that name." })]));
+}
+function slashKey(ev) {
+  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); const n = slash.items.length || 1; slash.sel = (slash.sel + (ev.key === "ArrowDown" ? 1 : n - 1)) % n; renderSlash(); }
+  else if (ev.key === "Enter" && !(ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); if (slash.items.length) runSlash(slash.sel); else closeSlash(); }
+  else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeSlash(); }
+}
+function runSlash(i) {
+  const c = slash.items[i]; if (!c) return;
+  try { const r = document.createRange(); r.setStart(slash.node, slash.start); r.setEnd(slash.node, slash.end); r.deleteContents(); } catch {}
+  closeSlash();
+  if (!state.ice) saveDraft(getNote());
+  c.run();
+}
+function closeSlash() { slash.open = false; const b = $("#slash"); if (b) b.hidden = true; }
 
 /* ===== Status ===== */
 const prog = { done: 0, total: 1 };
@@ -372,23 +481,27 @@ function setBusy(b) {
   $("#diveBtn").hidden = b;
   $("#stopBtn").hidden = !b;
   $("#bar").hidden = !b;
+  $("#note").classList.toggle("busy", b);
+  renderNoteMeta();
   if (b) { prog.done = 0; setProgress(); }
   renderRecent();
 }
 
 /* ===== Dive ===== */
-async function build(topic) {
-  topic = String(topic || "").trim().slice(0, 160);
-  if (!topic || state.busy || !canDive()) return;
+async function build(topic, notes = "") {
+  topic = String(topic || "").replace(/\s+/g, " ").trim().slice(0, 160);
+  notes = String(notes || "").trim().slice(0, 2000);
+  if (!topic) { setStatus("Write a topic as the title first."); $("#topic").focus(); return; }
+  if (state.busy || !canDive()) return;
   const ctl = buildCtl = new AbortController();
-  const ice = { id: "ice-" + Date.now().toString(36), topic, title: topic, summary: "", createdAt: Date.now(), sources: [],
+  const ice = { id: "ice-" + Date.now().toString(36), topic, notes, title: topic, summary: "", createdAt: Date.now(), sources: [],
     layers: ZONES.map((z) => ({ key: z.key, status: "pending", entries: [], theme: "" })) };
   state.ice = ice; closeDrawer(); setBusy(true); renderAll();
   prog.total = 1 + 6 * 2; prog.done = 0;
   setStatus(`Planning searches for “${topic}”…`, "busy");
   let finished = false;
   try {
-    for await (const ev of await postStream("/api/dive", { topic, depth: $("#tier").value }, ctl.signal)) {
+    for await (const ev of await postStream("/api/dive", { topic, notes, depth: $("#tier").value }, ctl.signal)) {
       if (ev.type === "status") setStatus(ev.text, "busy");
       else if (ev.type === "plan") {
         ice.title = ev.title || topic; ice.summary = ev.summary || "";
@@ -535,7 +648,7 @@ function openEntry(li, ei, mediaId) {
   const digBtn = h("button", { class: "btn primary", type: "button", disabled: !canDive() || null, text: e.deep ? "Dig deeper again" : "Dig deeper" });
   const stopBtn = h("button", { class: "btn", type: "button", hidden: true, text: "Stop" });
   const newBtn = h("button", { class: "btn", type: "button", disabled: !canDive() || state.busy || null, text: "Build an iceberg for this",
-    onclick: () => { const t = `${e.term} (${ice.title})`; $("#topic").value = t; closeDrawer(); build(t); } });
+    onclick: () => { const t = `${e.term} (${ice.title})`; closeDrawer(); setNote(t, ""); build(t); } });
   digBtn.onclick = () => digDeeper(ice, e, { deepBox, holesBox, deepErr, digBtn, stopBtn });
   stopBtn.onclick = () => deepCtl?.abort();
 
@@ -566,7 +679,7 @@ function openEntry(li, ei, mediaId) {
 function renderHoles(box, holes) {
   box.replaceChildren(...((holes || []).length ? [h("div", { class: "dsec", style: "width:100%" }, h("h3", { text: "Related topics" }),
     h("div", { class: "holes" }, holes.map((t) => h("button", { class: "chip", type: "button", disabled: state.busy || !canDive() || null, text: t,
-      onclick: () => { $("#topic").value = t; closeDrawer(); build(t); } }))))] : []));
+      onclick: () => { closeDrawer(); setNote(t, ""); build(t); } }))))] : []));
 }
 function splitHoles(text) {
   const m = text.match(/\n\s*Rabbit holes:\s*(.*)\s*$/i);
@@ -628,7 +741,7 @@ function closeLightbox() {
 }
 
 /* ===== Events ===== */
-$("#diveForm").addEventListener("submit", (ev) => { ev.preventDefault(); build($("#topic").value); });
+$("#diveBtn").addEventListener("click", () => { const n = getNote(); build(n.topic, n.notes); });
 $("#stopBtn").addEventListener("click", () => buildCtl?.abort());
 $("#dClose").addEventListener("click", closeDrawer);
 $("#scrim").addEventListener("click", closeDrawer);

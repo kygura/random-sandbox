@@ -17,42 +17,44 @@
 </head>
 <body>
 <header>
-  <div class="wrap console">
-    <div class="brand"><b>Iceberg Sounder</b>
-      <div class="brand-r">
-        <div class="themes" role="group" aria-label="Theme">
-          <button type="button" data-theme-choice="auto" aria-pressed="true">Auto</button>
-          <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
-          <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
-        </div>
-      </div>
+  <div class="wrap topbar">
+    <b class="brand">Iceberg Sounder</b>
+    <div class="recent" id="recent"></div>
+    <div class="themes" role="group" aria-label="Theme">
+      <button type="button" data-theme-choice="auto" aria-pressed="true">Auto</button>
+      <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
     </div>
-    <form class="dive" id="diveForm" autocomplete="off">
-      <div class="field">
-        <label for="topic">Research topic</label>
-        <input id="topic" name="topic" maxlength="160" placeholder="e.g. the Tunguska event" required>
+  </div>
+  <div class="wrap">
+    <article class="note" id="note">
+      <div class="note-meta" id="noteMeta"></div>
+      <h1 class="note-title" id="topic" contenteditable="plaintext-only" role="textbox" aria-label="Research topic" spellcheck="true" data-placeholder="Untitled topic"></h1>
+      <div class="note-body" id="notes" contenteditable="plaintext-only" role="textbox" aria-multiline="true" aria-label="Notes to steer the research" spellcheck="true" data-placeholder="Add notes to steer the research: an angle, a period, sources you trust, what to skip. Type / for commands."></div>
+      <div class="note-foot">
+        <label class="tier"><span class="sr">Effort</span>
+          <select id="tier" aria-label="How hard Claude thinks">
+            <option value="quick">Quick</option>
+            <option value="thorough" selected>Thorough</option>
+            <option value="deep">Deepest</option>
+          </select>
+        </label>
+        <span class="kbd" id="kbdHint" aria-hidden="true"></span>
+        <button class="btn-dive" id="diveBtn" type="button">Research</button>
+        <button class="btn-stop" id="stopBtn" type="button" hidden>Stop</button>
       </div>
-      <div class="tier">
-        <select id="tier" aria-label="How hard Claude thinks">
-          <option value="quick">Quick</option>
-          <option value="thorough" selected>Thorough</option>
-          <option value="deep">Deepest</option>
-        </select>
-      </div>
-      <button class="btn-dive" id="diveBtn" type="submit">Dive</button>
-      <button class="btn-stop" id="stopBtn" type="button" hidden>Stop</button>
-    </form>
+      <div class="slash" id="slash" role="listbox" aria-label="Commands" hidden></div>
+    </article>
     <div class="access" id="access" hidden>
       <label for="accessCode">Access code</label>
       <input id="accessCode" type="password" autocomplete="off" spellcheck="false" placeholder="Needed to run searches here">
     </div>
-    <div class="recent" id="recent"></div>
     <div class="status">
       <div class="status-line" id="statusLine"></div>
       <div class="bar" id="bar" hidden><i id="barFill"></i></div>
     </div>
   </div>
-  <div class="wrap hero" id="hero"></div>
+  <div class="wrap hero" id="hero" hidden></div>
 </header>
 
 <main class="chart" aria-label="Iceberg chart">

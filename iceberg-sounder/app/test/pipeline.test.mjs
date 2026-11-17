@@ -119,3 +119,10 @@ test("findEntryMedia returns videos and Commons images for one entry", async () 
   assert.ok(items.some((x) => isVideoUrl(x.url)));
   assert.ok(items.some((x) => x.commons && x.license));
 });
+
+test("the researcher's notes reach the planning and charting prompts", async () => {
+  const { deps, calls } = fakeDeps();
+  await collect((emit) => runDive({ topic: "t", notes: "Focus on 1970s carbon dating", depth: "quick", emit, signal: new AbortController().signal, deps }));
+  const withNotes = calls.prompts.filter((p) => p.includes("<notes>\nFocus on 1970s carbon dating\n</notes>"));
+  assert.equal(withNotes.length, 7, "plan plus six charting prompts");
+});
