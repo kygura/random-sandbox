@@ -260,7 +260,9 @@ export async function findEntryMedia({ topic, term, signal, deps }) {
   // Commons, then video, and video only from archival or official framing.
   const [originals, images, videos] = await Promise.all([
     exa.search(`Archival photograph, document scan or museum or library collection record of ${term} (${topic})`, { numResults: 6, signal }).catch(soft),
-    commons?.configured ? commons.searchImages(`${term} ${topic}`.slice(0, 100), { limit: 4, signal }).catch(() => []) : [],
+    commons?.configured
+      ? commons.searchImages(`${term} ${topic}`.slice(0, 100), { limit: 4, signal }).catch((e) => { if (!isAbort(e, signal)) console.warn("Commons search failed:", e.message); return []; })
+      : [],
     exa.search(`Archival footage, official video or recorded lecture about ${term} (${topic})`, { numResults: 4, includeDomains: ["youtube.com", "vimeo.com"], signal }).catch(soft),
   ]);
   const pick = (r, extra = {}) => ({ title: r.title, url: r.url, author: r.author, date: r.date, image: r.image, favicon: r.favicon, excerpt: str(r.text, 320), tier: tierOf(r.url), ...extra });
