@@ -1,5 +1,4 @@
 import http from "node:http";
-import { timingSafeEqual, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -58,39 +57,57 @@ const DEPTHS = new Set(["quick", "thorough", "deep"]);
 const cleanNotes = (v, max) => (typeof v === "string" ? v.replace(/\r\n?/g, "\n").replace(/[\u0000-\u0009\u000b-\u001f]/g, " ").replace(/<\/?notes>/gi, "").replace(/\n{3,}/g, "\n\n").trim().slice(0, max) : "");
 const clean = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max) : "");
 
-/* Paid endpoints (dive, deep, media) spend the operator's API credits. With
-   ACCESS_CODE set, callers must send it. On Vercel they stay closed until
-   ACCESS_CODE is set, unless ALLOW_PUBLIC=1 says to open them to everyone. */
-function gate(env = process.env) {
-  const code = env.ACCESS_CODE || "";
-  if (code) return { locked: true, closed: false, code };
-  if (env.VERCEL && env.ALLOW_PUBLIC !== "1") return { locked: true, closed: true, code: "" };
-  return { locked: false, closed: false, code: "" };
-}
-const digest = (s) => createHash("sha256").update(String(s)).digest();
-function allowed(req, g) {
-  if (!g.locked) return true;
-  if (g.closed) return false;
-  const sent = req.headers["x-access-code"] || "";
-  return timingSafeEqual(digest(sent), digest(g.code));
+/* Who pays for a search. A visitor can send their own Anthropic and Exa keys
+   (x-anthropic-key, x-exa-key); they're used for that request only and never
+   stored or logged. Without them the server's own keys are used, but on Vercel
+   only when ALLOW_PUBLIC=1, so a public URL doesn't spend the owner's credits. */
+const serverKeysOpen = (env) => !env.VERCEL || env.ALLOW_PUBLIC === "1";
+const KEY_RE = /^[\x21-\x7e]{8,300}$/;
+const USER_KEY_MESSAGES = {
+  claude_auth: "Anthropic rejected the API key you entered. Check it under Keys.",
+  claude_missing: "Add your Anthropic API key under Keys.",
+  exa_auth: "Exa rejected the API key you entered. Check it under Keys.",
+  exa_credits: "The Exa account for the key you entered is out of credits.",
+};
+function keyHeader(req, name) {
+  const v = req.headers[name];
+  return typeof v === "string" ? v.trim() : "";
 }
 
-export function createHandler(deps, { maxDives = Number(process.env.MAX_DIVES) || 2, env = process.env } = {}) {
+export function createHandler(deps, {
+  maxDives = Number(process.env.MAX_DIVES) || 2, env = process.env,
+  makeClaude = (apiKey) => createClaude({ apiKey }), makeExa = (apiKey) => createExa({ apiKey }),
+} = {}) {
   let running = 0;
+  const open = serverKeysOpen(env);
+  const serverClaude = open && deps.claude.configured, serverExa = open && deps.exa.configured;
+
+  /* The deps for one request, or an error to send back. */
+  function depsFor(req) {
+    const ak = keyHeader(req, "x-anthropic-key"), ek = keyHeader(req, "x-exa-key");
+    if ((ak && !KEY_RE.test(ak)) || (ek && !KEY_RE.test(ek))) return { status: 400, error: { code: "bad_key", message: "That doesn't look like an API key. Check what you pasted under Keys." } };
+    const claude = ak ? makeClaude(ak) : serverClaude ? deps.claude : null;
+    const exa = ek ? makeExa(ek) : serverExa ? deps.exa : null;
+    const missing = [!claude && "Anthropic", !exa && "Exa"].filter(Boolean);
+    if (missing.length) return { status: 401, error: { code: "keys_needed", missing, message: `Add your ${missing.join(" and ")} API key${missing.length > 1 ? "s" : ""} under Keys to search.` } };
+    return { deps: { ...deps, claude, exa }, userKeys: Boolean(ak || ek) };
+  }
 
   return async (req, res) => {
     const url = new URL(req.url, "http://localhost");
-    const g = gate(env);
     try {
       if (req.method === "GET" && url.pathname === "/api/health") {
-        return send(res, 200, { model: modelId(), claude: deps.claude.configured, exa: deps.exa.configured, commons: Boolean(deps.commons?.configured), locked: g.locked, closed: g.closed });
+        return send(res, 200, { model: modelId(), claude: serverClaude, exa: serverExa, commons: Boolean(deps.commons?.configured), byok: true });
       }
 
-      if (req.method === "POST" && /^\/api\/(dive|deep|media)$/.test(url.pathname) && !allowed(req, g)) {
-        return send(res, g.closed ? 403 : 401, { error: g.closed
-          ? { code: "closed", message: "Searching is turned off on this deployment. The owner needs to set ACCESS_CODE." }
-          : { code: "access_code", message: "Enter the access code to run searches." } });
+      let ctx = null;
+      if (req.method === "POST" && /^\/api\/(dive|deep|media)$/.test(url.pathname)) {
+        ctx = depsFor(req);
+        if (ctx.error) return send(res, ctx.status, { error: ctx.error });
       }
+      /* With a visitor's keys, point key errors at the Keys panel instead of .env. */
+      const fixMsg = (err) => (ctx?.userKeys && USER_KEY_MESSAGES[err?.code] ? { ...err, message: USER_KEY_MESSAGES[err.code] } : err);
+      const wrapEmit = (emit) => (ev) => emit(ev.type === "error" ? { ...ev, error: fixMsg(ev.error) } : ev);
 
       if (req.method === "POST" && url.pathname === "/api/dive") {
         const body = await readJson(req);
@@ -100,7 +117,7 @@ export function createHandler(deps, { maxDives = Number(process.env.MAX_DIVES) |
         if (!topic) return send(res, 400, { error: { code: "bad_request", message: "Name a topic to dive into." } });
         if (running >= maxDives) return send(res, 429, { error: { code: "busy", message: "Too many dives running at once. Try again in a minute." } });
         running++;
-        return ndjson(req, res, (emit, signal) => runDive({ topic, notes, depth, emit, signal, deps })).finally(() => { running--; });
+        return ndjson(req, res, (emit, signal) => runDive({ topic, notes, depth, emit: wrapEmit(emit), signal, deps: ctx.deps })).finally(() => { running--; });
       }
 
       if (req.method === "POST" && url.pathname === "/api/media") {
@@ -110,11 +127,11 @@ export function createHandler(deps, { maxDives = Number(process.env.MAX_DIVES) |
         const ctl = new AbortController();
         res.on("close", () => { if (!res.writableEnded) ctl.abort(); });
         try {
-          const items = await findEntryMedia({ topic, term, signal: ctl.signal, deps });
+          const items = await findEntryMedia({ topic, term, signal: ctl.signal, deps: ctx.deps });
           return send(res, 200, { items });
         } catch (e) {
           if (ctl.signal.aborted) return;
-          return send(res, 502, { error: publicError(e) });
+          return send(res, 502, { error: fixMsg(publicError(e)) });
         }
       }
 
@@ -127,7 +144,7 @@ export function createHandler(deps, { maxDives = Number(process.env.MAX_DIVES) |
           .map((s) => ({ id: Number(s.id) || 0, title: clean(s.title, 300), url: clean(s.url, 1000), excerpt: clean(s.excerpt, 400) }))
           .filter((s) => /^https?:\/\//.test(s.url));
         if (!topic || !entry.term || !sources.length) return send(res, 400, { error: { code: "bad_request", message: "Missing entry or sources." } });
-        return ndjson(req, res, (emit, signal) => runDeep({ topic, entry, sources, depth, emit, signal, deps }));
+        return ndjson(req, res, (emit, signal) => runDeep({ topic, entry, sources, depth, emit: wrapEmit(emit), signal, deps: ctx.deps }));
       }
 
       if (req.method === "GET" || req.method === "HEAD") {
@@ -161,8 +178,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const host = process.env.HOST || "127.0.0.1";
   createApp(deps).listen(port, host, () => {
     console.log(`Iceberg Sounder on http://${host === "0.0.0.0" ? "localhost" : host}:${port}`);
-    if (!deps.claude.configured) console.warn("  ! ANTHROPIC_API_KEY not set — dives will fail until it is.");
-    if (!deps.exa.configured) console.warn("  ! EXA_API_KEY not set — dives will fail until it is.");
+    if (!deps.claude.configured) console.warn("  · ANTHROPIC_API_KEY not set: visitors need to enter their own key under Keys.");
+    if (!deps.exa.configured) console.warn("  · EXA_API_KEY not set: visitors need to enter their own key under Keys.");
     if (!deps.commons.configured) console.warn("  · WIKIMEDIA_CONTACT not set — the Wikimedia Commons image gallery is off.");
   });
 }

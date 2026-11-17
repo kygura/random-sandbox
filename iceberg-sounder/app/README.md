@@ -33,20 +33,25 @@ The Quick / Thorough / Deepest setting maps to Claude's `low` / `medium` / `high
 
 ## Cost
 
-A dive makes 7 Claude calls and about 21 Exa searches; a deep dive makes 1 of each plus a page fetch. Every dive is billed to your keys. The server listens on 127.0.0.1 by default. Don't expose it publicly without putting auth in front.
+A dive makes 7 Claude calls and about 21 Exa searches; a deep dive makes 1 of each plus a page fetch. Every dive is billed to whichever keys it runs on. The server listens on 127.0.0.1 by default.
+
+## Keys
+
+Visitors can bring their own keys: the **Keys** panel stores an Anthropic and an Exa key in the browser and sends them as `x-anthropic-key` and `x-exa-key` headers with each search. The server builds clients from them for that request only and doesn't store or log them. A visitor can bring one key and use the server's other one, where the server's keys are available.
+
+Running locally, the server's own keys from `.env` are used when a visitor brings none.
 
 ## Deploy on Vercel
 
-The repo deploys as-is: `public/` is served statically and each file in `api/` is a function using the same handler as `server.mjs`. Set these environment variables on the project:
+The repo deploys as-is: `public/` is served statically and each file in `api/` is a function using the same handler as `server.mjs`. No environment variables are required: visitors search with their own keys. Optional ones:
 
 | Variable | |
 |---|---|
-| `ANTHROPIC_API_KEY` | required |
-| `EXA_API_KEY` | required |
-| `ACCESS_CODE` | required on Vercel: visitors enter it before they can search |
-| `WIKIMEDIA_CONTACT` | optional: an email or URL, turns on Commons images |
+| `ANTHROPIC_API_KEY`, `EXA_API_KEY` | the server's own keys, used only together with `ALLOW_PUBLIC=1` |
+| `ALLOW_PUBLIC` | `1` lets visitors without keys search on the server's keys, at your cost |
+| `WIKIMEDIA_CONTACT` | an email or URL; turns on Commons images |
 
-On Vercel, searching stays off until `ACCESS_CODE` is set, so a public URL can't spend your credits. Set `ALLOW_PUBLIC=1` instead only if you mean to let anyone search.
+On Vercel the server's keys are never used unless `ALLOW_PUBLIC=1`, so a public URL can't spend your credits by accident. To search on your own account there, paste your keys into the Keys panel like any visitor.
 
 ## Layout
 

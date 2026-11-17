@@ -59,23 +59,69 @@ async function withApp(env, fn) {
 }
 const post = (u, body, headers = {}) => fetch(u, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
 
-test("an access code guards the paid endpoints", async () => {
-  await withApp({ ACCESS_CODE: "s3cret" }, async (b) => {
-    assert.equal((await (await fetch(b + "/api/health")).json()).locked, true);
-    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" })).status, 401);
-    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" }, { "x-access-code": "wrong" })).status, 401);
-    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" }, { "x-access-code": "s3cret" })).status, 200);
+async function withHandlerApp(deps, opts, fn) {
+  const s = createApp(deps, opts);
+  await new Promise((r) => s.listen(0, "127.0.0.1", r));
+  try { await fn(`http://127.0.0.1:${s.address().port}`); } finally { s.close(); }
+}
+const noServerKeys = () => { const { deps } = fakeDeps(); return { ...deps, claude: { ...deps.claude, configured: false }, exa: { ...deps.exa, configured: false } }; };
+
+test("without server keys, searches need the visitor's keys", async () => {
+  await withHandlerApp(noServerKeys(), { env: {} }, async (b) => {
+    const h = await (await fetch(b + "/api/health")).json();
+    assert.equal(h.claude, false); assert.equal(h.byok, true);
+    const r = await post(b + "/api/media", { topic: "T", term: "x" });
+    assert.equal(r.status, 401);
+    const j = await r.json();
+    assert.equal(j.error.code, "keys_needed");
+    assert.deepEqual(j.error.missing, ["Anthropic", "Exa"]);
   });
 });
 
-test("on Vercel, paid endpoints stay closed until an access code is set", async () => {
+test("a visitor's keys build clients for that request only", async () => {
+  const seen = [];
+  const { deps } = fakeDeps();
+  const opts = { env: {}, makeClaude: (k) => { seen.push(["claude", k]); return deps.claude; }, makeExa: (k) => { seen.push(["exa", k]); return deps.exa; } };
+  await withHandlerApp(noServerKeys(), opts, async (b) => {
+    const r = await post(b + "/api/dive", { topic: "T", depth: "quick" }, { "x-anthropic-key": "sk-ant-test-123456", "x-exa-key": "exa-test-123456" });
+    assert.equal(r.status, 200);
+    const lines = (await r.text()).trim().split("\n").map((l) => JSON.parse(l));
+    assert.equal(lines.at(-1).type, "done");
+    assert.deepEqual(seen, [["claude", "sk-ant-test-123456"], ["exa", "exa-test-123456"]]);
+    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" }, { "x-anthropic-key": "bad key with spaces" })).status, 400);
+  });
+});
+
+test("one visitor key plus the server's other key is enough", async () => {
+  const { deps } = fakeDeps();
+  const half = { ...deps, claude: { ...deps.claude, configured: false } };
+  await withHandlerApp(half, { env: {}, makeClaude: () => deps.claude }, async (b) => {
+    const r1 = await post(b + "/api/media", { topic: "T", term: "x" });
+    assert.deepEqual((await r1.json()).error.missing, ["Anthropic"]);
+    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" }, { "x-anthropic-key": "sk-ant-test-123456" })).status, 200);
+  });
+});
+
+test("on Vercel the server's keys stay private unless ALLOW_PUBLIC=1", async () => {
   await withApp({ VERCEL: "1" }, async (b) => {
     const h = await (await fetch(b + "/api/health")).json();
-    assert.equal(h.closed, true);
-    assert.equal((await post(b + "/api/dive", { topic: "T" })).status, 403);
+    assert.equal(h.claude, false); assert.equal(h.exa, false);
+    assert.equal((await post(b + "/api/dive", { topic: "T" })).status, 401);
   });
   await withApp({ VERCEL: "1", ALLOW_PUBLIC: "1" }, async (b) => {
+    assert.equal((await (await fetch(b + "/api/health")).json()).claude, true);
     assert.equal((await post(b + "/api/media", { topic: "T", term: "x" })).status, 200);
+  });
+});
+
+test("a rejected visitor key points at the Keys panel, not .env", async () => {
+  const { deps } = fakeDeps();
+  const { AppError } = await import("../lib/errors.mjs");
+  const badExa = { ...deps.exa, search: async () => { throw new AppError("exa_auth", "Exa rejected the API key. Check EXA_API_KEY in your .env file.", { fatal: true }); } };
+  await withHandlerApp(noServerKeys(), { env: {}, makeClaude: () => deps.claude, makeExa: () => badExa }, async (b) => {
+    const r = await post(b + "/api/media", { topic: "T", term: "x" }, { "x-anthropic-key": "sk-ant-test-123456", "x-exa-key": "exa-test-123456" });
+    const j = await r.json();
+    assert.match(j.error.message, /under Keys/);
   });
 });
 

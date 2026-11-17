@@ -58,18 +58,18 @@ function wrapApiError(e) {
   return e;
 }
 
-export function createClaude({ client } = {}) {
+export function createClaude({ client, apiKey } = {}) {
   let anthropic = client || null;
   const get = () => {
     if (!anthropic) {
-      try { anthropic = new Anthropic(); }
+      try { anthropic = apiKey ? new Anthropic({ apiKey, authToken: null }) : new Anthropic(); }
       catch (e) { throw new AppError("claude_missing", "No Anthropic credentials found. Set ANTHROPIC_API_KEY in your .env file and restart.", { fatal: true, source: "claude" }); }
     }
     return anthropic;
   };
 
   return {
-    configured: Boolean(client || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
+    configured: Boolean(client || apiKey || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
 
     /** One request whose answer must match `schema`. */
     async structured(prompt, schema, { depth, signal } = {}) {

@@ -87,17 +87,17 @@ async function* ndjson(res) {
   }
   if (buf.trim()) yield JSON.parse(buf);
 }
-const AKEY = "iceberg-sounder.access";
-const accessHeaders = () => { let c = ""; try { c = localStorage.getItem(AKEY) || ""; } catch {} return c ? { "x-access-code": c } : {}; };
-function needAccess(code) {
-  if (code !== "access_code") return;
-  $("#access").hidden = false; $("#accessCode").focus();
-}
+/* Visitors' own API keys: kept in this browser, sent as headers with each search. */
+const KKEY = "iceberg-sounder.keys";
+const loadKeys = () => { try { const k = JSON.parse(localStorage.getItem(KKEY) || "{}"); return { anthropic: String(k.anthropic || ""), exa: String(k.exa || "") }; } catch { return { anthropic: "", exa: "" }; } };
+let userKeys = loadKeys();
+const keyHeaders = () => ({ ...(userKeys.anthropic ? { "x-anthropic-key": userKeys.anthropic } : {}), ...(userKeys.exa ? { "x-exa-key": userKeys.exa } : {}) });
+function needKeys(code) { if (code === "keys_needed" || code === "bad_key") openKeys(); }
 async function postStream(path, body, signal) {
-  const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json", ...accessHeaders() }, body: JSON.stringify(body), signal });
+  const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json", ...keyHeaders() }, body: JSON.stringify(body), signal });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    needAccess(data?.error?.code);
+    needKeys(data?.error?.code);
     throw { code: data?.error?.code || "http_" + res.status, message: data?.error?.message || `The server returned ${res.status}.` };
   }
   return ndjson(res);
@@ -116,9 +116,10 @@ function saveHistory(ice) {
   renderRecent();
 }
 const state = { ice: null, open: null, busy: false };
-const server = { ok: false, claude: false, exa: false, commons: false, closed: false };
+const server = { ok: false, claude: false, exa: false, commons: false };
 let buildCtl = null, deepCtl = null;
-const canDive = () => server.ok && server.claude && server.exa && !server.closed;
+const canDive = () => server.ok && (!!userKeys.anthropic || server.claude) && (!!userKeys.exa || server.exa);
+const missingKeys = () => [!userKeys.anthropic && !server.claude && "Anthropic", !userKeys.exa && !server.exa && "Exa"].filter(Boolean);
 
 /* ===== Rendering ===== */
 const sourceById = (ice, id) => ice.sources.find((s) => s.id === id);
@@ -550,7 +551,7 @@ async function enrichEntry(ice, e, li, ei, box) {
   const ctl = mediaCtl = new AbortController();
   renderModalMedia(ice, e, box, null, true);
   try {
-    const res = await fetch("/api/media", { method: "POST", headers: { "content-type": "application/json", ...accessHeaders() },
+    const res = await fetch("/api/media", { method: "POST", headers: { "content-type": "application/json", ...keyHeaders() },
       body: JSON.stringify({ topic: ice.title, term: e.term }), signal: ctl.signal });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error?.message || "Media search failed.");
@@ -611,7 +612,7 @@ function openEntry(li, ei, mediaId) {
     h("p", { class: "lead", text: e.summary }),
     e.detail ? h("p", { class: "detail", text: e.detail }) : null,
     h("div", { class: "actions" }, digBtn, stopBtn, newBtn),
-    !canDive() ? h("div", { class: "err", text: "Dig deeper needs the server's Anthropic and Exa keys." }) : null,
+    !canDive() ? h("div", { class: "err" }, "Dig deeper needs Anthropic and Exa keys. ", h("button", { class: "linkish", type: "button", text: "Add them under Keys", onclick: () => { closeDrawer(); openKeys(); } }), ".") : null,
     deepErr, deepBox, holesBox,
     h("div", { class: "dsec" }, h("h3", { text: `Sources · ${srcs.length}` }),
       h("ul", { class: "citelist" }, srcs.map((s) => {
@@ -700,7 +701,7 @@ $("#dClose").addEventListener("click", closeDrawer);
 $("#scrim").addEventListener("click", closeDrawer);
 $("#lbClose").addEventListener("click", closeLightbox);
 $("#lightbox").addEventListener("click", (ev) => { if (ev.target.id === "lightbox") closeLightbox(); });
-document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if (!$("#slash").hidden) return; if ($("#saved")?.open) closeSaved(); else if (!$("#lightbox").hidden) closeLightbox(); else closeDrawer(); } });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if (!$("#slash").hidden) return; if ($("#keys").open) $("#keys").open = false; else if ($("#saved")?.open) closeSaved(); else if (!$("#lightbox").hidden) closeLightbox(); else closeDrawer(); } });
 document.addEventListener("click", (ev) => {
   const a = ev.target.closest("a.cite");
   if (!a) return;
@@ -714,21 +715,45 @@ document.addEventListener("click", (ev) => {
 });
 
 $("#srcMore").addEventListener("click", () => { state.allSources = true; renderSources(); });
-$("#accessCode").addEventListener("input", (ev) => { try { localStorage.setItem(AKEY, ev.target.value.trim()); } catch {} });
+/* ===== Keys panel ===== */
+function openKeys() { const d = $("#keys"); d.open = true; setTimeout(() => (userKeys.anthropic || server.claude ? (userKeys.exa || server.exa ? null : $("#kExa")) : $("#kAnthropic"))?.focus(), 0); }
+function renderKeys(note = "") {
+  $("#kAnthropic").value = userKeys.anthropic; $("#kExa").value = userKeys.exa;
+  const own = server.claude && server.exa;
+  $("#keysIntro").textContent = own
+    ? "This site has its own keys, so yours are optional. If you add them, searches run on your accounts instead. Keys stay in this browser and the server doesn't store them."
+    : "Searches run on your own Anthropic and Exa accounts. Your keys stay in this browser and go to this site's server with each search, which passes them on and doesn't store them.";
+  $("#keysDot").className = "kdot" + (canDive() ? " on" : "");
+  $("#keysNote").textContent = note;
+}
+function refreshReady() {
+  $("#diveBtn").disabled = state.busy || !canDive();
+  if (state.busy) return;
+  const miss = missingKeys();
+  if (!server.ok) return;
+  if (miss.length) setStatus(`Add your ${miss.join(" and ")} API key${miss.length > 1 ? "s" : ""} under Keys to search. The example in Saved searches works without them.`);
+  else setStatus("Ready.");
+}
+$("#keysForm").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  userKeys = { anthropic: $("#kAnthropic").value.trim(), exa: $("#kExa").value.trim() };
+  try { localStorage.setItem(KKEY, JSON.stringify(userKeys)); } catch {}
+  renderKeys(userKeys.anthropic || userKeys.exa ? "Saved in this browser." : "No keys saved."); refreshReady();
+  if (canDive()) setTimeout(() => { $("#keys").open = false; }, 700);
+});
+$("#kForget").addEventListener("click", () => {
+  userKeys = { anthropic: "", exa: "" };
+  try { localStorage.removeItem(KKEY); } catch {}
+  renderKeys("Keys removed from this browser."); refreshReady();
+});
+document.addEventListener("click", (ev) => { const d = $("#keys"); if (d.open && !d.contains(ev.target)) d.open = false; });
+try { localStorage.removeItem("iceberg-sounder.access"); } catch {}
 
 /* ===== Boot ===== */
 renderAll();
 setStatus("Checking the server…");
 $("#diveBtn").disabled = true;
 fetch("/api/health").then((r) => r.json()).then((hl) => {
-  Object.assign(server, { ok: true, claude: !!hl.claude, exa: !!hl.exa, commons: !!hl.commons, closed: !!hl.closed });
-  const missing = [!hl.claude && "ANTHROPIC_API_KEY", !hl.exa && "EXA_API_KEY"].filter(Boolean);
-  if (hl.locked && !hl.closed) {
-    $("#access").hidden = false;
-    try { $("#accessCode").value = localStorage.getItem(AKEY) || ""; } catch {}
-  }
-  if (hl.closed) setStatus("Searching is off on this site. You can still open the example from Saved searches.");
-  else if (missing.length) setStatus(`The server is missing ${missing.join(" and ")}. Add ${missing.length > 1 ? "them" : "it"} to .env and restart. You can still open the example from Saved searches.`, "err");
-  else setStatus("Ready.");
-  $("#diveBtn").disabled = !canDive();
+  Object.assign(server, { ok: true, claude: !!hl.claude, exa: !!hl.exa, commons: !!hl.commons });
+  renderKeys(); refreshReady();
 }).catch(() => setStatus("Couldn't reach the server. Start it with npm start.", "err"));

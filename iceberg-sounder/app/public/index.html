@@ -20,6 +20,21 @@
   <div class="wrap topbar">
     <b class="brand">Iceberg Sounder</b>
     <div class="recent" id="recent"></div>
+    <details class="keys" id="keys">
+      <summary><span class="kdot" id="keysDot"></span>Keys</summary>
+      <form class="keys-panel" id="keysForm" autocomplete="off">
+        <p class="keys-intro" id="keysIntro">Searches run on your own Anthropic and Exa accounts. Your keys stay in this browser and go to this site's server with each search, which passes them on and doesn't store them.</p>
+        <label for="kAnthropic">Anthropic API key <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">Get one</a></label>
+        <input id="kAnthropic" type="password" spellcheck="false" autocapitalize="off" placeholder="sk-ant-…">
+        <label for="kExa">Exa API key <a href="https://dashboard.exa.ai/api-keys" target="_blank" rel="noopener noreferrer">Get one</a></label>
+        <input id="kExa" type="password" spellcheck="false" autocapitalize="off" placeholder="Your Exa key">
+        <div class="keys-actions">
+          <button class="btn primary" type="submit">Save</button>
+          <button class="btn" id="kForget" type="button">Forget keys</button>
+        </div>
+        <p class="keys-note" id="keysNote" role="status"></p>
+      </form>
+    </details>
     <div class="themes" role="group" aria-label="Theme">
       <button type="button" data-theme-choice="auto" aria-pressed="true">Auto</button>
       <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
@@ -58,10 +73,6 @@
       </div>
       <div class="slash" id="slash" role="listbox" aria-label="Commands" hidden></div>
     </article>
-    <div class="access" id="access" hidden>
-      <label for="accessCode">Access code</label>
-      <input id="accessCode" type="password" autocomplete="off" spellcheck="false" placeholder="Needed to run searches here">
-    </div>
     <div class="status">
       <div class="status-line" id="statusLine"></div>
       <div class="bar" id="bar" hidden><i id="barFill"></i></div>
