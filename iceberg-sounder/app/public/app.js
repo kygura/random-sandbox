@@ -57,6 +57,7 @@ function kindOf(s) {
 const thumbOf = (s) => s.image || videoOf(s.url)?.thumb || "";
 const KIND_LABEL = { video: "Video", image: "Image", paper: "Paper", archive: "Archive", article: "Article" };
 const ICON = {
+  chev: '<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
   play: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13l11-6.5z"/></svg>',
   paper: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4M9 12h6M9 15.5h6"/></svg>',
   archive: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4" rx="1"/><path d="M5 8.5v11h14v-11M10 12h4"/></svg>',
@@ -113,7 +114,7 @@ function saveHistory(ice) {
   } catch {}
   renderRecent();
 }
-const state = { ice: EXAMPLE, open: null, busy: false };
+const state = { ice: null, open: null, busy: false };
 const server = { ok: false, claude: false, exa: false, commons: false, closed: false };
 let buildCtl = null, deepCtl = null;
 const canDive = () => server.ok && server.claude && server.exa && !server.closed;
@@ -132,6 +133,13 @@ function mediaOf(ice, e) {
 
 function renderHero() {
   const ice = state.ice;
+  if (!ice) {
+    $("#hero").replaceChildren(
+      h("div", { class: "eyebrow" }, h("span", { text: "New iceberg" })),
+      h("h1", { class: "quiet", text: "Name a topic to start." }),
+      h("p", { text: "It gets sorted into six levels, from what everyone knows to what's contested, and every entry links to its sources. Open a saved search or the example from the list above." }));
+    return;
+  }
   const entries = ice.layers.reduce((n, l) => n + l.entries.length, 0);
   const done = ice.layers.filter((l) => l.status === "done").length;
   const media = ice.layers.reduce((n, l) => n + l.entries.filter((e) => mediaOf(ice, e).length).length, 0);
@@ -307,13 +315,47 @@ function renderSeabed(soon = false) {
   if (soon) { clearTimeout(mediaTimer); mediaTimer = setTimeout(() => renderSeabed(false), 250); return; }
   renderSources();
 }
+/* Saved searches: a dropdown with one row per iceberg made in this browser, plus the example. */
+const fmtDate = (t) => new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+const countEntries = (ice) => ice.layers.reduce((n, l) => n + l.entries.length, 0);
+function deleteSaved(id) {
+  try { localStorage.setItem(HKEY, JSON.stringify(loadHistory().filter((x) => x.id !== id))); } catch {}
+  if (state.ice?.id === id) show(null); else renderRecent();
+}
+function savedRow(ice, { removable }) {
+  const on = state.ice?.id === ice.id;
+  const meta = [ice.createdAt ? fmtDate(ice.createdAt) : (ice.example ? "Example" : ""), `${countEntries(ice)} entries`].filter(Boolean).join(" · ");
+  return h("li", { class: "saved-row" + (on ? " on" : "") },
+    h("button", { class: "saved-open", type: "button", role: "menuitem", "aria-current": on ? "true" : null, onclick: () => { closeSaved(); show(ice); } },
+      h("span", { class: "t", text: ice.title || ice.topic }), h("span", { class: "m", text: meta })),
+    removable ? h("button", { class: "saved-del", type: "button", "aria-label": `Delete ${ice.title || ice.topic}`, title: "Delete", onclick: () => deleteSaved(ice.id), text: "×" }) : null);
+}
+function closeSaved() { const d = $("#saved"); if (d) d.open = false; }
 function renderRecent() {
   const hist = loadHistory();
-  $("#recent").replaceChildren(h("small", { text: "Icebergs" }),
-    h("button", { class: "chip" + (state.ice.id === EXAMPLE.id ? " on" : ""), type: "button", disabled: state.busy || null, onclick: () => show(EXAMPLE), text: "Voynich manuscript · example" }),
-    ...hist.map((x) => h("button", { class: "chip" + (state.ice.id === x.id ? " on" : ""), type: "button", disabled: state.busy || null, onclick: () => show(x), text: x.title || x.topic })));
+  const label = state.ice ? (state.ice.title || state.ice.topic) : "Saved searches";
+  const menu = h("div", { class: "saved-menu", role: "menu" },
+    h("div", { class: "saved-h", text: "Your searches" }),
+    hist.length ? h("ul", {}, ...hist.map((x) => savedRow(x, { removable: true })))
+      : h("p", { class: "saved-empty", text: "Searches you run are saved here, in this browser." }),
+    h("div", { class: "saved-h", text: "Example" }),
+    h("ul", {}, savedRow(EXAMPLE, { removable: false })));
+  const d = h("details", { class: "saved", id: "saved" },
+    h("summary", { "aria-label": "Saved searches" },
+      h("span", { class: "lbl", text: label }), hist.length ? h("span", { class: "n", text: String(hist.length) }) : null, svg("chev")),
+    menu);
+  if (state.busy) d.classList.add("off");
+  $("#recent").replaceChildren(d);
 }
-function renderAll() { renderHero(); renderOcean(); renderSeabed(); renderRecent(); }
+document.addEventListener("click", (ev) => { const d = $("#saved"); if (d?.open && !d.contains(ev.target)) d.open = false; });
+function renderAll() {
+  const empty = !state.ice;
+  document.body.classList.toggle("empty", empty);
+  $("main.chart").hidden = empty; $("section.appendix").hidden = empty;
+  renderHero(); renderRecent();
+  if (empty) { $("#levels").replaceChildren(); $("#lvnav").replaceChildren(); $("#sources").replaceChildren(); return; }
+  renderOcean(); renderSeabed();
+}
 function show(ice) { if (state.busy) return; state.ice = ice; state.allSources = false; closeDrawer(); renderAll(); window.scrollTo({ top: 0 }); }
 
 /* ===== Status ===== */
@@ -592,7 +634,7 @@ $("#dClose").addEventListener("click", closeDrawer);
 $("#scrim").addEventListener("click", closeDrawer);
 $("#lbClose").addEventListener("click", closeLightbox);
 $("#lightbox").addEventListener("click", (ev) => { if (ev.target.id === "lightbox") closeLightbox(); });
-document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if (!$("#lightbox").hidden) closeLightbox(); else closeDrawer(); } });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if ($("#saved")?.open) closeSaved(); else if (!$("#lightbox").hidden) closeLightbox(); else closeDrawer(); } });
 document.addEventListener("click", (ev) => {
   const a = ev.target.closest("a.cite");
   if (!a) return;
@@ -619,8 +661,8 @@ fetch("/api/health").then((r) => r.json()).then((hl) => {
     $("#access").hidden = false;
     try { $("#accessCode").value = localStorage.getItem(AKEY) || ""; } catch {}
   }
-  if (hl.closed) setStatus("Searching is off on this site. You can still browse the example.");
-  else if (missing.length) setStatus(`The server is missing ${missing.join(" and ")}. Add ${missing.length > 1 ? "them" : "it"} to .env and restart. You can still browse the example.`, "err");
+  if (hl.closed) setStatus("Searching is off on this site. You can still open the example from Saved searches.");
+  else if (missing.length) setStatus(`The server is missing ${missing.join(" and ")}. Add ${missing.length > 1 ? "them" : "it"} to .env and restart. You can still open the example from Saved searches.`, "err");
   else setStatus("Ready.");
   $("#diveBtn").disabled = !canDive();
 }).catch(() => setStatus("Couldn't reach the server. Start it with npm start.", "err"));

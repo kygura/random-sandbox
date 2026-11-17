@@ -103,15 +103,45 @@ form.dive { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap:
 .access label { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
 .access input { height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-family: var(--f-ui); font-size: 14px; width: min(280px, 100%); }
 .access input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.recent { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.recent small { font-family: var(--f-mono); font-size: 11px; color: var(--muted); margin-right: 6px; }
+.recent { display: flex; }
+.saved { position: relative; }
+.saved > summary {
+  list-style: none; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+  height: 36px; padding: 0 12px 0 14px; border: 1px solid var(--line-2); border-radius: 8px;
+  font-size: 14px; color: var(--ink-2); max-width: min(420px, 100%);
+}
+.saved > summary::-webkit-details-marker { display: none; }
+.saved > summary:hover, .saved[open] > summary { border-color: var(--accent); color: var(--ink); }
+.saved > summary:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+.saved .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved .n { font-family: var(--f-mono); font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+.saved .chev { width: 16px; height: 16px; flex: none; transition: transform 0.15s; }
+.saved[open] .chev { transform: rotate(180deg); }
+.saved.off { pointer-events: none; opacity: 0.5; }
+.saved-menu {
+  position: absolute; z-index: 30; top: calc(100% + 6px); left: 0; width: min(380px, calc(100vw - 40px));
+  max-height: min(60vh, 460px); overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface); border: 1px solid var(--line-2); border-radius: 10px; padding: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.saved-menu ul { list-style: none; margin: 0; padding: 0; }
+.saved-h { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 8px 10px 4px; }
+.saved-h:not(:first-child) { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 10px; }
+.saved-empty { margin: 0; padding: 4px 10px 8px; font-size: 13px; color: var(--muted); }
+.saved-row { display: flex; align-items: stretch; border-radius: 7px; }
+.saved-row:hover, .saved-row.on { background: var(--accent-soft); }
+.saved-open { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; padding: 8px 10px; border: 0; background: none; cursor: pointer; color: var(--ink); }
+.saved-open .t { font-family: var(--f-display); font-size: 17px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-open .m { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.saved-del { flex: none; width: 36px; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 18px; border-radius: 7px; }
+.saved-del:hover { color: var(--bad); }
 .chip {
   border: 1px solid var(--line-2); background: transparent; border-radius: 999px;
   padding: 4px 12px; font-size: 13px; cursor: pointer; color: var(--ink-2);
 }
 .chip:hover:not([disabled]) { border-color: var(--accent); color: var(--accent); }
-.chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
 .chip[disabled] { opacity: 0.5; cursor: not-allowed; }
+.hero h1.quiet { color: var(--muted); }
 
 .status { display: grid; gap: 8px; }
 .status-line { display: flex; gap: 10px; align-items: center; font-family: var(--f-mono); font-size: 12.5px; color: var(--muted); min-height: 20px; }
@@ -421,10 +451,12 @@ body.modal-open { overflow: hidden; }
   .access { gap: 6px; }
 
   /* Saved icebergs scroll sideways instead of stacking up. */
-  .recent { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-inline: calc(-1 * max(20px, env(safe-area-inset-left, 0px))); padding-inline: max(20px, env(safe-area-inset-left, 0px)); }
-  .recent::-webkit-scrollbar { display: none; }
-  .recent small { flex: none; }
-  .chip { flex: none; min-height: 36px; padding: 6px 14px; white-space: nowrap; }
+  .saved, .saved > summary { width: 100%; max-width: none; }
+  .saved > summary { height: 44px; }
+  .saved .lbl { flex: 1; }
+  .saved-menu { width: 100%; }
+  .saved-open { padding: 11px 10px; }
+  .saved-del { width: 44px; }
 
   .hero { padding-block: 24px 24px; gap: 10px; }
   .hero h1 { font-size: clamp(40px, 12vw, 56px); }
