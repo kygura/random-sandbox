@@ -51,3 +51,40 @@ test("media endpoint returns items for one entry", async () => {
   const j = await r.json();
   assert.ok(j.items.length >= 2);
 });
+
+async function withApp(env, fn) {
+  const s = createApp(fakeDeps().deps, { env });
+  await new Promise((r) => s.listen(0, "127.0.0.1", r));
+  try { await fn(`http://127.0.0.1:${s.address().port}`); } finally { s.close(); }
+}
+const post = (u, body, headers = {}) => fetch(u, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
+
+test("an access code guards the paid endpoints", async () => {
+  await withApp({ ACCESS_CODE: "s3cret" }, async (b) => {
+    assert.equal((await (await fetch(b + "/api/health")).json()).locked, true);
+    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" })).status, 401);
+    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" }, { "x-access-code": "wrong" })).status, 401);
+    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" }, { "x-access-code": "s3cret" })).status, 200);
+  });
+});
+
+test("on Vercel, paid endpoints stay closed until an access code is set", async () => {
+  await withApp({ VERCEL: "1" }, async (b) => {
+    const h = await (await fetch(b + "/api/health")).json();
+    assert.equal(h.closed, true);
+    assert.equal((await post(b + "/api/dive", { topic: "T" })).status, 403);
+  });
+  await withApp({ VERCEL: "1", ALLOW_PUBLIC: "1" }, async (b) => {
+    assert.equal((await post(b + "/api/media", { topic: "T", term: "x" })).status, 200);
+  });
+});
+
+test("handler accepts a body the runtime already parsed", async () => {
+  const { createHandler } = await import("../server.mjs");
+  const handler = createHandler(fakeDeps().deps, { env: {} });
+  const out = { status: 0, body: "" };
+  const res = { headersSent: false, writeHead(s) { out.status = s; this.headersSent = true; }, end(b) { out.body = String(b); }, on() {} };
+  await handler({ method: "POST", url: "/api/media", headers: {}, body: { topic: "T", term: "x" } }, res);
+  assert.equal(out.status, 200);
+  assert.ok(JSON.parse(out.body).items.length);
+});

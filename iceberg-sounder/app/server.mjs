@@ -1,4 +1,5 @@
 import http from "node:http";
+import { timingSafeEqual, createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30,6 +31,12 @@ function send(res, status, body, type = "application/json; charset=utf-8") {
 }
 
 async function readJson(req, limit = 64 * 1024) {
+  // On Vercel the runtime may already have parsed the body.
+  if (req.body !== undefined && req.body !== null) {
+    if (typeof req.body === "string") return JSON.parse(req.body || "{}");
+    if (Buffer.isBuffer(req.body)) return JSON.parse(req.body.toString("utf8") || "{}");
+    if (typeof req.body === "object") return req.body;
+  }
   let size = 0; const chunks = [];
   for await (const c of req) { size += c.length; if (size > limit) throw new Error("too_large"); chunks.push(c); }
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
@@ -49,14 +56,38 @@ function ndjson(req, res, work) {
 const DEPTHS = new Set(["quick", "thorough", "deep"]);
 const clean = (v, max) => (typeof v === "string" ? v.replace(/[\u0000-\u001f]/g, " ").trim().slice(0, max) : "");
 
-export function createApp(deps = { claude: createClaude(), exa: createExa(), commons: createCommons() }, { maxDives = Number(process.env.MAX_DIVES) || 2 } = {}) {
+/* Paid endpoints (dive, deep, media) spend the operator's API credits. With
+   ACCESS_CODE set, callers must send it. On Vercel they stay closed until
+   ACCESS_CODE is set, unless ALLOW_PUBLIC=1 says to open them to everyone. */
+function gate(env = process.env) {
+  const code = env.ACCESS_CODE || "";
+  if (code) return { locked: true, closed: false, code };
+  if (env.VERCEL && env.ALLOW_PUBLIC !== "1") return { locked: true, closed: true, code: "" };
+  return { locked: false, closed: false, code: "" };
+}
+const digest = (s) => createHash("sha256").update(String(s)).digest();
+function allowed(req, g) {
+  if (!g.locked) return true;
+  if (g.closed) return false;
+  const sent = req.headers["x-access-code"] || "";
+  return timingSafeEqual(digest(sent), digest(g.code));
+}
+
+export function createHandler(deps, { maxDives = Number(process.env.MAX_DIVES) || 2, env = process.env } = {}) {
   let running = 0;
 
-  return http.createServer(async (req, res) => {
+  return async (req, res) => {
     const url = new URL(req.url, "http://localhost");
+    const g = gate(env);
     try {
       if (req.method === "GET" && url.pathname === "/api/health") {
-        return send(res, 200, { model: modelId(), claude: deps.claude.configured, exa: deps.exa.configured, commons: Boolean(deps.commons?.configured) });
+        return send(res, 200, { model: modelId(), claude: deps.claude.configured, exa: deps.exa.configured, commons: Boolean(deps.commons?.configured), locked: g.locked, closed: g.closed });
+      }
+
+      if (req.method === "POST" && /^\/api\/(dive|deep|media)$/.test(url.pathname) && !allowed(req, g)) {
+        return send(res, g.closed ? 403 : 401, { error: g.closed
+          ? { code: "closed", message: "Searching is turned off on this deployment. The owner needs to set ACCESS_CODE." }
+          : { code: "access_code", message: "Enter the access code to run searches." } });
       }
 
       if (req.method === "POST" && url.pathname === "/api/dive") {
@@ -113,7 +144,11 @@ export function createApp(deps = { claude: createClaude(), exa: createExa(), com
       console.error(e);
       if (!res.headersSent) send(res, 500, { error: { code: "internal", message: "Server error." } });
     }
-  });
+  };
+}
+
+export function createApp(deps = { claude: createClaude(), exa: createExa(), commons: createCommons() }, opts = {}) {
+  return http.createServer(createHandler(deps, opts));
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

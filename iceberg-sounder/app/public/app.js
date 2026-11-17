@@ -85,10 +85,17 @@ async function* ndjson(res) {
   }
   if (buf.trim()) yield JSON.parse(buf);
 }
+const AKEY = "iceberg-sounder.access";
+const accessHeaders = () => { let c = ""; try { c = localStorage.getItem(AKEY) || ""; } catch {} return c ? { "x-access-code": c } : {}; };
+function needAccess(code) {
+  if (code !== "access_code") return;
+  $("#access").hidden = false; $("#accessCode").focus();
+}
 async function postStream(path, body, signal) {
-  const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal });
+  const res = await fetch(path, { method: "POST", headers: { "content-type": "application/json", ...accessHeaders() }, body: JSON.stringify(body), signal });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
+    needAccess(data?.error?.code);
     throw { code: data?.error?.code || "http_" + res.status, message: data?.error?.message || `The server returned ${res.status}.` };
   }
   return ndjson(res);
@@ -107,9 +114,9 @@ function saveHistory(ice) {
   renderRecent();
 }
 const state = { ice: EXAMPLE, open: null, busy: false };
-const server = { ok: false, claude: false, exa: false, commons: false };
+const server = { ok: false, claude: false, exa: false, commons: false, closed: false };
 let buildCtl = null, deepCtl = null;
-const canDive = () => server.ok && server.claude && server.exa;
+const canDive = () => server.ok && server.claude && server.exa && !server.closed;
 
 /* ===== Rendering ===== */
 const sourceById = (ice, id) => ice.sources.find((s) => s.id === id);
@@ -406,7 +413,7 @@ async function enrichEntry(ice, e, li, ei, box) {
   const ctl = mediaCtl = new AbortController();
   renderModalMedia(ice, e, box, null, true);
   try {
-    const res = await fetch("/api/media", { method: "POST", headers: { "content-type": "application/json" },
+    const res = await fetch("/api/media", { method: "POST", headers: { "content-type": "application/json", ...accessHeaders() },
       body: JSON.stringify({ topic: ice.title, term: e.term }), signal: ctl.signal });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error?.message || "Media search failed.");
@@ -568,14 +575,21 @@ document.addEventListener("click", (ev) => {
   el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 1800);
 });
 
+$("#accessCode").addEventListener("input", (ev) => { try { localStorage.setItem(AKEY, ev.target.value.trim()); } catch {} });
+
 /* ===== Boot ===== */
 renderAll();
 setStatus("Checking the server…");
 $("#diveBtn").disabled = true;
 fetch("/api/health").then((r) => r.json()).then((hl) => {
-  Object.assign(server, { ok: true, claude: !!hl.claude, exa: !!hl.exa, commons: !!hl.commons });
+  Object.assign(server, { ok: true, claude: !!hl.claude, exa: !!hl.exa, commons: !!hl.commons, closed: !!hl.closed });
   const missing = [!hl.claude && "ANTHROPIC_API_KEY", !hl.exa && "EXA_API_KEY"].filter(Boolean);
-  if (missing.length) setStatus(`The server is missing ${missing.join(" and ")}. Add ${missing.length > 1 ? "them" : "it"} to .env and restart. The example below still works.`, "err");
+  if (hl.locked && !hl.closed) {
+    $("#access").hidden = false;
+    try { $("#accessCode").value = localStorage.getItem(AKEY) || ""; } catch {}
+  }
+  if (hl.closed) setStatus("Searching is turned off on this deployment. The example below is fully explorable.");
+  else if (missing.length) setStatus(`The server is missing ${missing.join(" and ")}. Add ${missing.length > 1 ? "them" : "it"} to .env and restart. The example below still works.`, "err");
   else setStatus(`Ready. Name a topic and dive.${hl.commons ? "" : " (Wikimedia Commons images are off until WIKIMEDIA_CONTACT is set.)"}`);
   $("#diveBtn").disabled = !canDive();
 }).catch(() => setStatus("Couldn't reach the server. Start it with npm start.", "err"));

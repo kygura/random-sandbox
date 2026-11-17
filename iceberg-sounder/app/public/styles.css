@@ -99,6 +99,10 @@ form.dive { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap:
 .btn-dive[disabled] { opacity: 0.4; cursor: not-allowed; }
 .btn-stop { height: 60px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--line-2); background: transparent; cursor: pointer; font-family: var(--f-mono); font-size: 13px; }
 
+.access { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.access label { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.access input { height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface); color: var(--ink); font-family: var(--f-ui); font-size: 14px; width: min(280px, 100%); }
+.access input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .recent { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .recent small { font-family: var(--f-mono); font-size: 11px; color: var(--muted); margin-right: 6px; }
 .chip {
