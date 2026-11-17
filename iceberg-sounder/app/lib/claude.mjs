@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
-import * as z from "zod/v4";
+import * as z from "zod";
 import { AppError } from "./errors.mjs";
 
 export const modelId = () => process.env.ICEBERG_MODEL || "claude-opus-5-5";
