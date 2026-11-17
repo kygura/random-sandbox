@@ -1,5 +1,6 @@
 import { ZONES as ZONE_TEXT } from "./zones.js";
 import { EXAMPLE } from "./example.js";
+import { createNotesEditor } from "./editor.js";
 
 const ZONES = ZONE_TEXT;
 
@@ -356,18 +357,23 @@ function renderAll() {
 function show(ice) {
   if (state.busy) return;
   state.ice = ice; state.allSources = false; closeDrawer();
-  if (ice) setNote(ice.topic || ice.title, ice.notes || ""); else { const d = loadDraft(); setNote(d.topic, d.notes); }
+  if (ice) setNote(ice.topic || ice.title, ice.notesDoc || ice.notes || ""); else { const d = loadDraft(); setNote(d.topic, d.doc); }
   renderAll(); window.scrollTo({ top: 0 });
 }
-function newNote() { if (state.busy) return; saveDraft({ topic: "", notes: "" }); show(null); $("#topic").focus(); }
+function newNote() { if (state.busy) return; saveDraft({ topic: "", doc: "" }); show(null); $("#topic").focus(); }
 
 /* ===== The note ===== */
+/* Title: plain text, one line. Notes: a Tiptap editor (see editor.js). */
 const DKEY = "iceberg-sounder.draft";
-const loadDraft = () => { try { const d = JSON.parse(localStorage.getItem(DKEY) || "{}"); return { topic: String(d.topic || ""), notes: String(d.notes || "") }; } catch { return { topic: "", notes: "" }; } };
+const loadDraft = () => {
+  try { const d = JSON.parse(localStorage.getItem(DKEY) || "{}"); return { topic: String(d.topic || ""), doc: d.doc && d.doc.type === "doc" ? d.doc : String(d.notes || "") }; }
+  catch { return { topic: "", doc: "" }; }
+};
 const saveDraft = (d) => { try { localStorage.setItem(DKEY, JSON.stringify(d)); } catch {} };
-const textOf = (el) => el.innerText.replace(/\u00a0/g, " ");
-function getNote() { return { topic: textOf($("#topic")).replace(/\s+/g, " ").trim(), notes: textOf($("#notes")).replace(/\n{3,}/g, "\n\n").trim() }; }
-function setNote(topic, notes) { $("#topic").textContent = topic || ""; $("#notes").textContent = notes || ""; }
+const titleText = () => $("#topic").innerText.replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+function getNote() { return { topic: titleText(), notes: notesEd.getMarkdown(), doc: notesEd.getJSON() }; }
+function setNote(topic, doc) { $("#topic").textContent = topic || ""; notesEd.setContent(doc || ""); }
+const draftNow = () => { if (!state.ice) { const n = getNote(); saveDraft({ topic: n.topic, doc: n.doc }); } };
 function renderNoteMeta() {
   const ice = state.ice; const el = $("#noteMeta");
   if (!ice) { el.textContent = "New search"; return; }
@@ -377,95 +383,42 @@ function renderNoteMeta() {
     h("span", { text: ice.example ? "Example" : state.busy ? "Researching…" : "Saved " + fmtDate(ice.createdAt || Date.now()) }),
     ...(edited ? [h("span", { class: "edited", text: " · edited, run it again to research the new version" })] : []));
 }
-(function setupNote() {
-  const title = $("#topic"), body = $("#notes");
-  for (const el of [title, body]) {
-    if (el.contentEditable !== "plaintext-only") el.contentEditable = "true";
-    el.addEventListener("paste", (ev) => {
-      ev.preventDefault();
-      let t = ev.clipboardData?.getData("text/plain") || "";
-      if (el === title) t = t.replace(/\s+/g, " ");
-      document.execCommand("insertText", false, t);
-    });
-    el.addEventListener("input", () => {
-      if (!el.textContent.trim() && !el.querySelector("img")) el.replaceChildren();
-      if (!state.ice) saveDraft(getNote());
-      renderNoteMeta();
-      if (el === body) slashCheck();
-    });
-  }
-  title.addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && !(ev.metaKey || ev.ctrlKey)) {
-      ev.preventDefault(); body.focus();
-      const r = document.createRange(); r.selectNodeContents(body); r.collapse(true);
-      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
-    }
-  });
-  title.addEventListener("input", () => { if (textOf(title).length > 160) title.textContent = textOf(title).slice(0, 160); });
-  body.addEventListener("keydown", (ev) => {
-    if (!$("#slash").hidden) slashKey(ev);
-    else if (ev.key === "Backspace" && !textOf(body).length) { ev.preventDefault(); placeCaretEnd(title); }
-  });
-  $("#note").addEventListener("keydown", (ev) => {
-    if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); closeSlash(); $("#diveBtn").click(); }
-  });
-  body.addEventListener("blur", () => setTimeout(closeSlash, 120));
-  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
-  $("#kbdHint").replaceChildren(h("kbd", { text: mac ? "⌘" : "Ctrl" }), h("kbd", { text: "↵" }));
-  const d = loadDraft(); setNote(d.topic, d.notes);
-})();
 function placeCaretEnd(el) {
   el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false);
   const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
 }
-
-/* Slash commands, typed at the start of a line in the notes. */
-const SLASH = [
-  { key: "research", t: "Research", d: "Start the search now", k: "↵", run: () => $("#diveBtn").click() },
-  { key: "quick", t: "Quick", d: "Fast, lighter reading", run: () => { $("#tier").value = "quick"; } },
-  { key: "thorough", t: "Thorough", d: "The default", run: () => { $("#tier").value = "thorough"; } },
-  { key: "deepest", t: "Deepest", d: "Slowest, most careful", run: () => { $("#tier").value = "deep"; } },
-  { key: "example", t: "Open the example", d: "The Voynich manuscript", run: () => show(EXAMPLE) },
-  { key: "new", t: "New search", d: "Clear this page", run: () => newNote() },
-];
-const slash = { open: false, node: null, start: 0, end: 0, items: [], sel: 0 };
-function slashCheck() {
-  const sel = getSelection(); if (!sel.rangeCount || !sel.isCollapsed) return closeSlash();
-  const r = sel.getRangeAt(0); const node = r.startContainer;
-  if (node.nodeType !== 3 || !$("#notes").contains(node)) return closeSlash();
-  const before = node.data.slice(0, r.startOffset);
-  const m = before.match(/(?:^|\n)\/([a-z]*)$/i);
-  if (!m) return closeSlash();
-  const q = m[1].toLowerCase();
-  slash.node = node; slash.end = r.startOffset; slash.start = r.startOffset - q.length - 1;
-  slash.items = SLASH.filter((c) => c.key.startsWith(q) || c.t.toLowerCase().includes(q));
-  slash.sel = 0; slash.open = true;
-  const box = $("#slash"), note = $("#note").getBoundingClientRect();
-  const rect = r.getClientRects()[0] || r.startContainer.parentElement.getBoundingClientRect();
-  box.style.top = (rect.bottom - note.top + 6) + "px";
-  box.style.left = Math.max(0, Math.min(rect.left - note.left, note.width - 268)) + "px";
-  renderSlash(); box.hidden = false;
-}
-function renderSlash() {
-  const box = $("#slash");
-  box.replaceChildren(...(slash.items.length ? slash.items.map((c, i) => h("button", {
-    type: "button", role: "option", "aria-selected": i === slash.sel ? "true" : "false",
-    onmousedown: (ev) => { ev.preventDefault(); runSlash(i); },
-  }, h("span", { class: "t", text: c.t }), h("span", { class: "d", text: c.d }), c.k ? h("span", { class: "k", text: c.k }) : null)) : [h("div", { class: "none", text: "No command by that name." })]));
-}
-function slashKey(ev) {
-  if (ev.key === "ArrowDown" || ev.key === "ArrowUp") { ev.preventDefault(); const n = slash.items.length || 1; slash.sel = (slash.sel + (ev.key === "ArrowDown" ? 1 : n - 1)) % n; renderSlash(); }
-  else if (ev.key === "Enter" && !(ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); if (slash.items.length) runSlash(slash.sel); else closeSlash(); }
-  else if (ev.key === "Escape") { ev.preventDefault(); ev.stopPropagation(); closeSlash(); }
-}
-function runSlash(i) {
-  const c = slash.items[i]; if (!c) return;
-  try { const r = document.createRange(); r.setStart(slash.node, slash.start); r.setEnd(slash.node, slash.end); r.deleteContents(); } catch {}
-  closeSlash();
-  if (!state.ice) saveDraft(getNote());
-  c.run();
-}
-function closeSlash() { slash.open = false; const b = $("#slash"); if (b) b.hidden = true; }
+const notesEd = createNotesEditor({
+  el: $("#notes"), bubble: $("#bubble"), slash: $("#slash"),
+  placeholder: "Add notes to steer the research: an angle, a period, sources you trust, what to skip. Type / for commands.",
+  actions: [
+    { key: "research", t: "Research", d: "Start the search now", k: "", run: () => $("#diveBtn").click() },
+    { key: "quick", t: "Quick", d: "Fast, lighter reading", run: () => { $("#tier").value = "quick"; } },
+    { key: "thorough", t: "Thorough", d: "The default", run: () => { $("#tier").value = "thorough"; } },
+    { key: "deepest", t: "Deepest", d: "Slowest, most careful", run: () => { $("#tier").value = "deep"; } },
+    { key: "example", t: "Open the example", d: "The Voynich manuscript", run: () => show(EXAMPLE) },
+    { key: "new", t: "New search", d: "Clear this page", run: () => newNote() },
+  ],
+  onChange: () => { draftNow(); renderNoteMeta(); },
+  onSubmit: () => $("#diveBtn").click(),
+  onExitTop: () => placeCaretEnd($("#topic")),
+});
+(function setupTitle() {
+  const title = $("#topic");
+  if (title.contentEditable !== "plaintext-only") title.contentEditable = "true";
+  title.addEventListener("paste", (ev) => { ev.preventDefault(); document.execCommand("insertText", false, (ev.clipboardData?.getData("text/plain") || "").replace(/\s+/g, " ")); });
+  title.addEventListener("input", () => {
+    if (!title.textContent.trim()) title.replaceChildren();
+    if (title.innerText.length > 160) { title.textContent = title.innerText.slice(0, 160); placeCaretEnd(title); }
+    draftNow(); renderNoteMeta();
+  });
+  title.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); $("#diveBtn").click(); }
+    else if (ev.key === "Enter" || (ev.key === "ArrowDown" && !ev.shiftKey)) { ev.preventDefault(); notesEd.focusStart(); }
+  });
+  const mac = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  $("#kbdHint").replaceChildren(h("kbd", { text: mac ? "⌘" : "Ctrl" }), h("kbd", { text: "↵" }));
+  const d = loadDraft(); setNote(d.topic, d.doc);
+})();
 
 /* ===== Status ===== */
 const prog = { done: 0, total: 1 };
@@ -488,13 +441,13 @@ function setBusy(b) {
 }
 
 /* ===== Dive ===== */
-async function build(topic, notes = "") {
+async function build(topic, notes = "", notesDoc = null) {
   topic = String(topic || "").replace(/\s+/g, " ").trim().slice(0, 160);
   notes = String(notes || "").trim().slice(0, 2000);
   if (!topic) { setStatus("Write a topic as the title first."); $("#topic").focus(); return; }
   if (state.busy || !canDive()) return;
   const ctl = buildCtl = new AbortController();
-  const ice = { id: "ice-" + Date.now().toString(36), topic, notes, title: topic, summary: "", createdAt: Date.now(), sources: [],
+  const ice = { id: "ice-" + Date.now().toString(36), topic, notes, notesDoc: notes ? notesDoc : null, title: topic, summary: "", createdAt: Date.now(), sources: [],
     layers: ZONES.map((z) => ({ key: z.key, status: "pending", entries: [], theme: "" })) };
   state.ice = ice; closeDrawer(); setBusy(true); renderAll();
   prog.total = 1 + 6 * 2; prog.done = 0;
@@ -741,13 +694,13 @@ function closeLightbox() {
 }
 
 /* ===== Events ===== */
-$("#diveBtn").addEventListener("click", () => { const n = getNote(); build(n.topic, n.notes); });
+$("#diveBtn").addEventListener("click", () => { const n = getNote(); build(n.topic, n.notes, n.doc); });
 $("#stopBtn").addEventListener("click", () => buildCtl?.abort());
 $("#dClose").addEventListener("click", closeDrawer);
 $("#scrim").addEventListener("click", closeDrawer);
 $("#lbClose").addEventListener("click", closeLightbox);
 $("#lightbox").addEventListener("click", (ev) => { if (ev.target.id === "lightbox") closeLightbox(); });
-document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if ($("#saved")?.open) closeSaved(); else if (!$("#lightbox").hidden) closeLightbox(); else closeDrawer(); } });
+document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") { if (!$("#slash").hidden) return; if ($("#saved")?.open) closeSaved(); else if (!$("#lightbox").hidden) closeLightbox(); else closeDrawer(); } });
 document.addEventListener("click", (ev) => {
   const a = ev.target.closest("a.cite");
   if (!a) return;

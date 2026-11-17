@@ -18,7 +18,7 @@ cp .env.example .env   # then add ANTHROPIC_API_KEY and EXA_API_KEY
 npm start              # http://localhost:3000
 ```
 
-The page opens on a blank note. Write the topic as the title and, if you like, notes underneath to steer the research (an angle, a period, sources to favor or skip). Press Ctrl+Enter (⌘+Enter on a Mac) or **Research** to start. Type `/` in the notes for commands: research now, set the effort, open the example, start a new search.
+The page opens on a blank note. Write the topic as the title and, if you like, notes underneath to steer the research (an angle, a period, sources to favor or skip). The notes are a [Tiptap](https://tiptap.dev) editor: Markdown shortcuts (`## `, `- `, `1. `, `> `, `**bold**`) work as you type, selecting text shows a formatting bar, and `/` opens a menu of blocks and actions (research now, set the effort, open the example, start a new search). Claude receives the notes as Markdown. Press Ctrl+Enter (⌘+Enter on a Mac) or **Research** to start.
 
 Past searches and a pre-built example (the Voynich manuscript) are in the **Saved searches** menu, so you can look around before adding keys.
 
@@ -53,6 +53,8 @@ On Vercel, searching stays off until `ACCESS_CODE` is set, so a public URL can't
 ```
 server.mjs          HTTP server: static files, /api/dive and /api/deep (NDJSON streams), /api/health
 lib/pipeline.mjs    dive and deep-dive orchestration, prompts
+public/editor.js    the notes editor (Tiptap), Markdown export
+public/vendor/      prebuilt Tiptap bundle; regenerate with `npm run vendor`
 lib/claude.mjs      Anthropic SDK calls and output schemas
 lib/exa.mjs         Exa search and page contents
 lib/commons.mjs     Wikimedia Commons image search

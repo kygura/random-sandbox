@@ -30,7 +30,20 @@
     <article class="note" id="note">
       <div class="note-meta" id="noteMeta"></div>
       <h1 class="note-title" id="topic" contenteditable="plaintext-only" role="textbox" aria-label="Research topic" spellcheck="true" data-placeholder="Untitled topic"></h1>
-      <div class="note-body" id="notes" contenteditable="plaintext-only" role="textbox" aria-multiline="true" aria-label="Notes to steer the research" spellcheck="true" data-placeholder="Add notes to steer the research: an angle, a period, sources you trust, what to skip. Type / for commands."></div>
+      <div class="note-editor" id="notes"></div>
+      <div class="bubble" id="bubble" role="toolbar" aria-label="Format">
+        <button type="button" data-cmd="bold" aria-label="Bold"><b>B</b></button>
+        <button type="button" data-cmd="italic" aria-label="Italic"><i>I</i></button>
+        <button type="button" data-cmd="strike" aria-label="Strikethrough"><s>S</s></button>
+        <button type="button" data-cmd="code" aria-label="Code" class="mono">&lt;/&gt;</button>
+        <span class="sep"></span>
+        <button type="button" data-cmd="h2" aria-label="Heading">H2</button>
+        <button type="button" data-cmd="h3" aria-label="Subheading">H3</button>
+        <button type="button" data-cmd="bullets" aria-label="Bulleted list">•&nbsp;List</button>
+        <button type="button" data-cmd="quote" aria-label="Quote">“&nbsp;”</button>
+        <span class="sep"></span>
+        <button type="button" data-cmd="link" aria-label="Link">Link</button>
+      </div>
       <div class="note-foot">
         <label class="tier"><span class="sr">Effort</span>
           <select id="tier" aria-label="How hard Claude thinks">

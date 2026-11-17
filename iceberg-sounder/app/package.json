@@ -4,13 +4,25 @@
   "private": true,
   "description": "Iceberg research charts from live web search, with images and videos rendered inline.",
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "vendor": "esbuild vendor/editor-entry.mjs --bundle --format=esm --minify --target=es2020 --legal-comments=eof --outfile=public/vendor/tiptap.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.9.0",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@tiptap/core": "3.32.2",
+    "@tiptap/extension-bubble-menu": "3.32.2",
+    "@tiptap/extensions": "3.32.2",
+    "@tiptap/pm": "3.32.2",
+    "@tiptap/starter-kit": "3.32.2",
+    "@tiptap/suggestion": "3.32.2",
+    "esbuild": "0.28.2"
   }
 }
