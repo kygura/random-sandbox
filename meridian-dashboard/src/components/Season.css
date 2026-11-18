@@ -115,3 +115,10 @@
   .hm-head, .hm-row { grid-template-columns: 130px repeat(12, 38px) 130px; }
   .hm-grid { min-width: 0; width: max-content; }
 }
+
+@media (max-width: 720px) {
+  .card:has(.hm-controls) .card-head { flex-wrap: wrap; }
+  .card:has(.hm-controls) .card-head > div { min-width: 0; max-width: 100%; flex: 1 1 100%; }
+  .hm-controls .seg { max-width: 100%; overflow-x: auto; }
+  .hm-controls .seg button { white-space: nowrap; }
+}
