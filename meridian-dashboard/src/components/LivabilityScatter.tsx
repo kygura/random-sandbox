@@ -47,6 +47,12 @@ export function LivabilityScatter(_props: Record<string, never>) {
         [cx - rad - 3, cy + 15, "end"],
         [cx + rad + 3, cy - 21, "start"],
         [cx - rad - 3, cy + 27, "end"],
+        [cx + rad + 3, cy + 27, "start"],
+        [cx - rad - 3, cy - 21, "end"],
+        [cx + rad + 3, cy - 33, "start"],
+        [cx - rad - 3, cy + 39, "end"],
+        [cx + rad + 3, cy + 39, "start"],
+        [cx - rad - 3, cy - 33, "end"],
       ];
       let pick = opts[0];
       for (const o of opts) {
