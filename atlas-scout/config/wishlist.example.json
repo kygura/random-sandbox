@@ -1,0 +1,9 @@
+[
+  { "name": "Madeira", "activities": ["hiking", "nature"], "priority": 5, "notes": "Levada walks, laurel forest" },
+  { "name": "Pico, Azores", "activities": ["wildlife", "hiking"], "priority": 4, "prefer_months": [6, 7, 8, 9], "notes": "Sperm whales, volcano climb" },
+  { "name": "Fuerteventura", "activities": ["surf", "beach"], "priority": 3 },
+  { "name": "Marrakech", "activities": ["culture", "food"], "priority": 3, "avoid_months": [7, 8] },
+  { "name": "Lofoten", "activities": ["hiking", "nature"], "priority": 4 },
+  { "name": "Tromso", "activities": ["wildlife"], "priority": 3, "prefer_months": [1, 2, 3], "notes": "Northern lights" },
+  { "name": "Siargao", "activities": ["surf", "beach"], "priority": 3, "notes": "Long haul, needs a long window" }
+]
