@@ -66,6 +66,7 @@ const CountryPaths = memo(function CountryPaths(props: {
 
 export function WorldMap(props: { month: number; passport: string }) {
   const { month, passport } = props;
+  const passportName = data.visa.names[passport] ?? passport;
   const [mode, setMode] = useState<Mode>("comfort");
   const [hover, setHover] = useState<Hover | null>(null);
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
@@ -127,7 +128,7 @@ export function WorldMap(props: { month: number; passport: string }) {
     mode === "comfort" ? (
       <>Mean comfort of tracked cities in {monthName}. Dots are cities; red marks are conflicts, rings are seasonal hazards.</>
     ) : (
-      <>Entry requirement for a {passport} passport, by destination. Red marks are conflicts, rings are seasonal hazards in {monthName}.</>
+      <>Entry requirement for a passport from {passportName}, by destination. Red marks are conflicts, rings are seasonal hazards in {monthName}.</>
     );
 
   const tipBody = () => {
@@ -166,7 +167,7 @@ export function WorldMap(props: { month: number; passport: string }) {
         <>
           <strong>{hover.name}</strong>
           <div className="wm-tip-row">
-            <span>{passport} passport</span>
+            <span>{passportName} passport</span>
             <b>{v ? `${VISA_LABEL[v.kind]}${v.days ? `, ${v.days} days` : ""}` : VISA_LABEL.unknown}</b>
           </div>
         </>
@@ -194,7 +195,7 @@ export function WorldMap(props: { month: number; passport: string }) {
   return (
     <Card
       kicker="World map"
-      title={mode === "comfort" ? "Where to be in " + monthName : "Where " + passport + " passports go"}
+      title={mode === "comfort" ? "Where to be in " + monthName : "Where a passport from " + passportName + " goes"}
       subtitle={sub}
       actions={
         <div className="seg" role="group" aria-label="Map mode">
@@ -211,7 +212,7 @@ export function WorldMap(props: { month: number; passport: string }) {
         aria-label={
           mode === "comfort"
             ? `World map of mean comfort for tracked cities in ${monthName}, with conflict and seasonal hazard markers`
-            : `World map of visa requirements for a ${passport} passport, with conflict and seasonal hazard markers`
+            : `World map of visa requirements for a passport from ${passportName}, with conflict and seasonal hazard markers`
         }
       >
         <path d={SPHERE_D} style={{ fill: "var(--ocean)" }} />
