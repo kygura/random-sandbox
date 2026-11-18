@@ -49,7 +49,7 @@ export function VisaReach(props: { passport: string }) {
   return (
     <Card
       kicker="Visa reach"
-      title={`Where a ${name} passport goes`}
+      title={`Where a passport from ${name} goes`}
       subtitle={`${total} destinations by entry rule. ${easy} need no visa in advance (visa free, on arrival or ETA).`}
       foot={`${data.visa.source}. Rules change; check the destination's official source before travel.`}
     >
