@@ -28,11 +28,11 @@ export type LiveCity = {
 export type TravelEvent = {
   id: string;
   title: string;
-  kind: "festival" | "culture" | "sport" | "eclipse";
+  kind: "festival" | "culture" | "sport" | "eclipse" | "sky" | "nature";
   month: number; // 1..12
   date: string | null; // ISO date when fixed
   recurring: boolean;
-  cities: string[]; // display names
+  cities: string[]; // display names, every city the event is placed on
 };
 export type Phenomenon = {
   id: string;
@@ -64,6 +64,8 @@ export type Dashboard = {
   cities: SeasonCity[];
   live: LiveCity[];
   events: TravelEvent[];
+  eventsAsOf: string; // when Meridian last refreshed its live events
+  eventsSource: string;
   phenomena: Phenomenon[];
   phenomenaAsOf: string;
   countries: { type: "FeatureCollection"; features: CountryFeature[] };
