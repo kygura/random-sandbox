@@ -35,6 +35,8 @@ git clone https://github.com/kygura/meridian ../meridian
 MERIDIAN_DIR=../meridian bun scripts/build-data.ts
 ```
 
+Events come from Meridian's live events API (`/api/overlays/events`, one request per month), not from a file: Meridian fetches them at runtime from Wikidata, NOAA and climate normals. `MERIDIAN_API` picks the host (default: the production deployment). The dashboard shows when that feed was last refreshed; rebuild to pick up newer events.
+
 The script recomputes every monthly score with `src/lib/comfort.ts` (copied unchanged from Meridian), the same way Meridian's server rescores its seed data. Country outlines are rounded to 0.1 degree. ISO2 to ISO3 codes for the visa map come from the system `iso-codes` package (`ISO_3166_JSON` to override the path).
 
 Sources, as credited in Meridian: Open-Meteo climate normals 2015 to 2024, UNDP Human Development Index, World Happiness Report, World Bank, Natural Earth, Wikidata, and Passport Index Data (17 February 2026). Visa rules change; check the destination's official source before travel.

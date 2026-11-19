@@ -74,16 +74,27 @@ const live = [...rows.values()]
     };
   });
 
-// 3. Events and standing hazards/conflicts.
-const events = read("data/events.json").events.map((e: any) => ({
-  id: e.id,
-  title: e.title,
-  kind: e.kind,
-  month: e.month,
-  date: e.date ?? null,
-  recurring: Boolean(e.recurring),
-  cities: (e.cityIds ?? []).map((id: string) => rows.get(id)?.name ?? id).slice(0, 6),
-}));
+// 3. Events, from Meridian's live events API (ADR 0021). Events are no longer a file in the
+// repo: Meridian fetches them from Wikidata and other sources at runtime. One request per
+// month; an event listed in several months (an aurora season) gets an entry for each.
+const API = (process.env.MERIDIAN_API ?? "https://meridian-virid-nine.vercel.app").replace(/\/$/, "");
+type ApiPoint = { eventId: string; title: string; kind: string; recurring: boolean; date?: string; cityId: string; cityName: string };
+const byKey = new Map<string, { id: string; title: string; kind: string; month: number; date: string | null; recurring: boolean; cities: string[] }>();
+let eventsAsOf = "";
+for (let month = 1; month <= 12; month++) {
+  const res = await fetch(`${API}/api/overlays/events?month=${month}`);
+  if (!res.ok) throw new Error(`events for month ${month}: ${API} answered ${res.status}`);
+  const body = (await res.json()) as { asOf: string; events: ApiPoint[] };
+  if (body.asOf > eventsAsOf) eventsAsOf = body.asOf;
+  for (const p of body.events) {
+    const key = `${p.eventId}|${month}`;
+    const e = byKey.get(key) ?? { id: key, title: p.title, kind: p.kind, month, date: p.date ?? null, recurring: Boolean(p.recurring), cities: [] };
+    if (!e.cities.includes(p.cityName)) e.cities.push(p.cityName);
+    byKey.set(key, e);
+  }
+}
+const events = [...byKey.values()];
+
 const ph = read("data/phenomena.json");
 const phenomena = ph.items.map((p: any) => ({
   id: p.id,
@@ -147,6 +158,8 @@ const out = {
   cities,
   live,
   events,
+  eventsAsOf,
+  eventsSource: API,
   phenomena,
   phenomenaAsOf: ph.asOf,
   countries,

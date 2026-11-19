@@ -2,7 +2,7 @@ import { data, isActive, MONTHS, MONTHS_LONG, type TravelEvent } from "../data.t
 import "./Panels.css";
 import { Card } from "./Card.tsx";
 
-const KIND_LABEL: Record<TravelEvent["kind"], string> = { festival: "Festival", culture: "Culture", sport: "Sport", eclipse: "Eclipse" };
+const KIND_LABEL: Record<TravelEvent["kind"], string> = { festival: "Festival", culture: "Culture", sport: "Sport", eclipse: "Eclipse", sky: "Sky", nature: "Nature" };
 
 function dayOf(e: TravelEvent): string | null {
   if (!e.date) return null;
@@ -41,7 +41,7 @@ export function EventsHazards(props: { month: number }) {
     <Card
       kicker="What is on"
       title={`${MONTHS_LONG[m]}: events and hazards`}
-      foot={`Hazards and conflicts as of ${data.phenomenaAsOf}. Seasonal hazards are recurring risks, not forecasts.`}
+      foot={`Events from Meridian's live feed, fetched ${data.eventsAsOf.slice(0, 10)}. Hazards and conflicts as of ${data.phenomenaAsOf}. Seasonal hazards are recurring risks, not forecasts.`}
     >
       <section className="eh-sec">
         <div className="pn-h"><span>On this month</span><span>{events.length}</span></div>
